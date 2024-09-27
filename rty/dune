@@ -1,0 +1,8 @@
+(library
+ (public_name ppx_refinement_type.rty)
+ (name rty)
+ (wrapped true)
+ (libraries compiler-libs.common)
+ (modules
+   rty)
+)

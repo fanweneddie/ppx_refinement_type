@@ -1,9 +1,6 @@
 open Ppxlib
 open Parsetree
-
-type rty =
-  | RtyBase of { base_ty : core_type; phi : expression }
-  | RtyArrow of { arg_name : pattern; arg_rty : rty; ret_rty : rty }
+open Rty
 
 let string_of_pattern pattern =
   let _ = Format.flush_str_formatter () in
@@ -66,7 +63,7 @@ let get_impl_from_typed_items name implementation =
 
 let impl struc =
   let rtys, struc = List.partition item_is_rty struc in
-  let rtys_ctx =
+  let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
         match item.pstr_desc with
