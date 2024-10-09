@@ -38,7 +38,7 @@ let type_infer (_ctx: rty_ctx) (e: Typedtree.expression) : rty_exp =
   | Texp_extension_constructor(_)
   | Texp_open(_) -> failwith "NI"
 
-and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): rty_exp =
+and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): unit =
   match e.exp_desc with
   | Texp_ident(_)
   | Texp_constant(_)
