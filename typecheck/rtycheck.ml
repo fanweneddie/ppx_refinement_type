@@ -41,7 +41,13 @@ let type_infer (_ctx: rty_ctx) (e: Typedtree.expression) : rty_exp =
 and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): unit =
   match e.exp_desc with
   | Texp_ident(_)
-  | Texp_constant(_)
+  | Texp_constant(_) ->
+      match _ty with
+      | RtyBase (base_ty, phi) -> 
+          if base_ty == e.exp_type then
+            (* call z3, convert constant c into predicate v = c, and show forall v, [(v == c) => phi]*)
+          else failwith "type error"
+      | _ -> failwith "type error"
   | Texp_let(_)
   | Texp_function(_)
   | Texp_apply(_)
@@ -77,7 +83,9 @@ and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): unit =
 let type_infer_item (_ctx: rty_ctx) (item: Typedtree.structure_item) : rty_exp option =
   match item.str_desc with
   | Tstr_eval (_e, _) -> failwith "NI"
-  | Tstr_value (_, _vb) -> failwith "NI" (* Regular type checking and add to ctx*)
+  | Tstr_value (_, _vb) ->
+    let (_, ret_ty) = List.find (fun (p, _) -> p == vb.vb_pat) _ctx in 
+    type_check _ctx _vb.vb_expr ret_ty (* Regular type checking and add to ctx*)
   | _ -> None
 
 let bidirect_type_infer (ctx: rty_ctx) (struc: Typedtree.structure) 
