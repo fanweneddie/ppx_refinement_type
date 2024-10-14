@@ -59,7 +59,7 @@ let get_impl_from_typed_items name implementation =
             Some value_binding.vb_expr
           else None
       | _ -> None)
-    implementation.structure.str_items
+    implementation.structure.str_items 
 
 let impl struc =
   let rtys, struc = List.partition item_is_rty struc in
@@ -85,7 +85,11 @@ let impl struc =
               (string_of_pattern name)
               (Pprintast.string_of_expression
               @@ Ocaml_common.Untypeast.untype_expression impl)
-              (layout_rty rty))
+              (layout_rty rty);
+            
+              (* do type check after printing out the refinement type *)
+              Typecheck.Rtycheck.bidirect_type_infer rtys_ctx implementation.structure (Some rty)
+      )
       rtys_ctx
   in
   struc

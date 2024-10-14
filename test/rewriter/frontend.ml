@@ -1,3 +1,4 @@
+(*
 open Stdlib
 
 let[@rty] foo =
@@ -7,3 +8,8 @@ let[@rty] foo =
 let foo x = x + 2;;
 
 foo 1
+*)
+
+let[@rty] foo = (true: int)
+let foo = 2;; 
+foo
