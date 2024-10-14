@@ -1,6 +1,7 @@
 open Ppxlib
 open Parsetree
 open Rty
+open Typecheck
 
 let string_of_pattern pattern =
   let _ = Format.flush_str_formatter () in
@@ -73,6 +74,7 @@ let impl struc =
       rtys
   in
   let implementation = Ocaml_typecheck.process_implementation_file struc in
+  let _ = Rtycheck.bidirect_type_infer rtys_ctx implementation.structure None in
   let () =
     List.iter
       (fun (name, rty) ->

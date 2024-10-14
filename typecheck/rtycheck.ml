@@ -40,14 +40,15 @@ let type_infer (_ctx: rty_ctx) (e: Typedtree.expression) : rty_exp =
 
 and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): unit =
   match e.exp_desc with
-  | Texp_ident(_)
+  | Texp_ident(_) -> failwith "NI"
   | Texp_constant(_) ->
-      match _ty with
-      | RtyBase (base_ty, phi) -> 
-          if base_ty == e.exp_type then
+      (match _ty with
+      | RtyBase {base_ty=bty; phi=_phi} ->
+          if Rty.eq_base_type bty e.exp_type then
             (* call z3, convert constant c into predicate v = c, and show forall v, [(v == c) => phi]*)
-          else failwith "type error"
-      | _ -> failwith "type error"
+            Printf.printf "Call z3 here\n"
+          else failwith "Type error at constant, base type not equal to expression type"
+      | _ -> failwith "Type error not RtyBase for constant expression")
   | Texp_let(_)
   | Texp_function(_)
   | Texp_apply(_)
@@ -80,19 +81,18 @@ and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): unit =
   | Texp_extension_constructor(_)
   | Texp_open(_) -> failwith "NI"
 
-let type_infer_item (_ctx: rty_ctx) (item: Typedtree.structure_item) : rty_exp option =
+let type_infer_item (ctx: rty_ctx) (item: Typedtree.structure_item) : rty_exp option =
   match item.str_desc with
-  | Tstr_eval (_e, _) -> failwith "NI"
-  | Tstr_value (_, _vb) ->
-    let (_, ret_ty) = List.find (fun (p, _) -> p == vb.vb_pat) _ctx in 
-    type_check _ctx _vb.vb_expr ret_ty (* Regular type checking and add to ctx*)
+  | Tstr_eval (_e, _) -> None
+  | Tstr_value (_, [vb]) ->
+    (let pty = Rty.ctx_lookup ctx vb.vb_pat in
+    match pty with
+    | None -> None
+    | Some (_, ty) -> type_check ctx vb.vb_expr ty; None)
   | _ -> None
 
 let bidirect_type_infer (ctx: rty_ctx) (struc: Typedtree.structure) 
-  (ty: rty option) : rty_exp_list =
+  (_ty: rty option) : rty_exp_list =
     List.filter_map
-    (fun item -> 
-      match ty with
-      | None -> type_infer_item ctx item 
-      | Some _ty' -> failwith "NI" (* Then do type check *))
+    (fun item -> type_infer_item ctx item)
     struc.str_items 
