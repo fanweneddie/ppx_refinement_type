@@ -21,7 +21,7 @@ let ctx_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (pattern * rty) option =
         ctx
     | _ -> None
 
-let eq_base_type (ty: core_type) (ty': Types.type_expr): bool =
+let unify_base_type (ty: core_type) (ty': Types.type_expr): bool =
   try 
     Ctype.unify Env.initial_safe_string 
       ((Typetexp.transl_simple_type Env.initial_safe_string false ty).ctyp_type)
