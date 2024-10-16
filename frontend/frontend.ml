@@ -62,7 +62,7 @@ let rec parse_rty env expr =
             match binding.pvb_pat.ppat_desc with
             | Ppat_var {txt; _} -> 
                 let (_, new_env) = Env.enter_value txt val_desc env in
-                (new_env, (txt,arg_rty)::l)
+                (new_env, l @ [(txt,arg_rty)])
             | _ -> failwith "not a variable")
           (env, []) bindings
       in
