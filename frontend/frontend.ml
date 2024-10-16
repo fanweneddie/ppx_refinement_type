@@ -79,7 +79,7 @@ let rec parse_rty env expr =
       let (_,env) = Env.enter_value "v" val_desc env in
       let phi = Ocaml_typecheck.process_expr env phi in
       (* Convert typetree to z3 expression*)
-      let phi_z3 = Smtcheck.convert_phi Contexts.z3_ctx phi in 
+      let phi_z3 = Smtcheck.convert_phi !Contexts.z3_ctx phi in 
       RtyBase { base_ty = base_ty ; phi = phi_z3 }
   | _ -> failwith "die"
 
@@ -121,7 +121,9 @@ let impl struc =
         | _ -> None)
       rtys
   in
-  (*let _ = Rtycheck.bidirect_type_infer rtys_ctx implementation.structure None in*)
+  (* assign rty context in Contexts *)
+  Contexts.rtys_ctx := rtys_ctx;
+  let _ = Rtycheck.bidirect_type_infer (* rtys_ctx *) implementation.structure None in
   let () =
     List.iter
       (fun (name, rty) ->
