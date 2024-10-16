@@ -24,3 +24,18 @@ let process_implementation_file parsetree =
   | Failure s ->
       prerr_endline s;
       assert false
+
+let process_expr (env: Env.t) 
+  (expr: Parsetree.expression): Typedtree.expression =
+  Typecore.type_expression env expr
+
+let process_type (env: Env.t) (ty: Parsetree.core_type): Types.type_expr = 
+  (Typetexp.transl_simple_type env false ty).ctyp_type
+
+let create_val_desc (ty: Types.type_expr): Types.value_description =
+  { val_type = ty;
+    val_kind = Val_reg;
+    val_loc = Location.none;
+    val_attributes = [];
+    val_uid = Types.Uid.internal_not_actually_unique;
+  }

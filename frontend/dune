@@ -4,7 +4,5 @@
  (wrapped true)
  (kind ppx_rewriter)
  (libraries ppxlib compiler-libs.common rty typecheck)
- (modules
-   ocaml_typecheck
-   frontend)
+ (modules frontend)
 )

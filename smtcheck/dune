@@ -2,7 +2,7 @@
  (public_name ppx_refinement_type.smtcheck)
  (name smtcheck)
  (wrapped true)
- (libraries ppxlib compiler-libs.common z3)
+ (libraries ppxlib compiler-libs.common Z3)
  (modules
    smtcheck)
 )

@@ -2,7 +2,8 @@
  (public_name ppx_refinement_type.typecheck)
  (name typecheck)
  (wrapped true)
- (libraries ppxlib compiler-libs.common rty z3)
+ (libraries ppxlib compiler-libs.common rty)
  (modules
+   ocaml_typecheck
    rtycheck)
 )

@@ -1,11 +1,30 @@
 open Ocaml_common
 open Rty
-open Z3
 
-let type_infer (_ctx: rty_ctx) (e: Typedtree.expression) : rty_exp =
+let ctx_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
+    match pat.pat_desc with
+    | Tpat_var(_, {txt=pat_name; _}) ->
+      List.find_opt
+        (fun (name, _) -> String.equal name pat_name)
+        ctx
+    | _ -> None
+
+let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): bool =
+  try 
+    Ctype.unify env ty ty';
+    true
+  with
+  | _ -> false
+
+let type_infer (_ctx: rty_ctx) (e: Typedtree.expression) : rty =
   match e.exp_desc with
   | Texp_ident(_)
   | Texp_constant(_)
+      (*RtyBase
+        {
+          base_ty=e.exp_type;
+          phi=Texp_apply (Texp_ident (_), [])
+        }*)
   | Texp_let(_)
   | Texp_function(_)
   | Texp_apply(_)
@@ -41,11 +60,13 @@ let type_infer (_ctx: rty_ctx) (e: Typedtree.expression) : rty_exp =
 and type_check (_ctx: rty_ctx) (e: Typedtree.expression) (_ty: rty): unit =
   match e.exp_desc with
   | Texp_ident(_) -> failwith "NI"
-  | Texp_constant(value) -> 
+  | Texp_constant(_) 
+      (*let ty = type_infer ctx e in
     (match ty with
     | RtyBase {base_ty=bty; phi=phi} 
-        when Rty.unify_base_type bty e.exp_type -> handle_const value bty phi
-    | _ -> failwith "Error at parsing refinement type at constant")      
+        when unify_base_type bty e.exp_type ->
+        Printf.printf "Call z3 here"
+    | _ -> failwith "Error at parsing refinement type at constant")*) 
   | Texp_let(_)
   | Texp_function(_)
   | Texp_apply(_)
@@ -82,7 +103,7 @@ let type_infer_item (ctx: rty_ctx) (item: Typedtree.structure_item) : rty_exp op
   match item.str_desc with
   | Tstr_eval (_e, _) -> None
   | Tstr_value (_, [vb]) ->
-    (let pty = Rty.ctx_lookup ctx vb.vb_pat in
+    (let pty = ctx_lookup ctx vb.vb_pat in
     match pty with
     | None -> None
     | Some (_, ty) -> type_check ctx vb.vb_expr ty; None)
