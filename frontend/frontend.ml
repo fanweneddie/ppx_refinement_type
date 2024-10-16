@@ -3,6 +3,8 @@ open Parsetree
 open Ocaml_common
 open Rty
 open Typecheck
+(* open Z3 *)
+(* open Smtcheck *)
 
 let string_of_pattern pattern =
   let _ = Format.flush_str_formatter () in
@@ -17,12 +19,13 @@ let string_of_type_expr ty =
 
 let rec layout_rty = function
   | RtyBase { base_ty; phi } ->
-      let phi = 
+      (* let phi = 
         Ocaml_common.Untypeast.untype_expression phi
-      in
+      in *)
       Printf.sprintf "{v:%s | %s}"
         (string_of_type_expr base_ty)
-        (Pprintast.string_of_expression phi)
+        (* (Pprintast.string_of_expression phi) *)
+        (Z3.Expr.to_string phi)
   | RtyArrow { arg_name; arg_rty; ret_rty } ->
       Printf.sprintf "%s:%s -> %s"
         arg_name
@@ -76,7 +79,8 @@ let rec parse_rty env expr =
       let (_,env) = Env.enter_value "v" val_desc env in
       let phi = Ocaml_typecheck.process_expr env phi in
       (* Convert typetree to z3 expression*)
-      RtyBase { base_ty ; phi }
+      let phi_z3 = Smtcheck.convert_phi Contexts.z3_ctx phi in 
+      RtyBase { base_ty = base_ty ; phi = phi_z3 }
   | _ -> failwith "die"
 
 let parse_rty_binding value_binding =

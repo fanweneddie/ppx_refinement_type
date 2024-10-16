@@ -2,7 +2,7 @@
  (public_name ppx_refinement_type.rty)
  (name rty)
  (wrapped true)
- (libraries ppxlib compiler-libs.common)
+ (libraries ppxlib compiler-libs.common z3)
  (modules
    rty)
 )

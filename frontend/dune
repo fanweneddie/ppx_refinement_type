@@ -3,6 +3,6 @@
  (name frontend)
  (wrapped true)
  (kind ppx_rewriter)
- (libraries ppxlib compiler-libs.common rty typecheck)
+ (libraries ppxlib compiler-libs.common rty typecheck z3 smtcheck contexts)
  (modules frontend)
 )
