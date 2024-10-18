@@ -3,8 +3,14 @@ open Typedtree
 open Z3
 
 (* very complicated *)
-let convert_type (_ctx: Z3.context) (_bty: Types.type_expr): Z3.Sort.sort = 
-  failwith "NI"
+let convert_type (ctx: Z3.context) (bty: Types.type_expr): Z3.Sort.sort = 
+  match Types.get_desc bty with
+  | Tconstr(_, [expr], _) -> (
+    match Types.get_desc expr with
+    | Tvar(Some "int") -> Arithmetic.Integer.mk_sort ctx
+    | _ -> failwith "NI CONVERT_TYPE"
+  )
+  | _ -> failwith "Unsupported constant types" 
   (*match bty.ptyp_desc with
   | Ptyp_constr ({ txt = Lident "int"; _ }, []) -> Z3.Arithmetic.Integer.mk_sort ctx
   (* | Ptyp_constr ({ txt = Lident "bool"; _ }, []) -> Z3.Boolean.mk_sort ctx
@@ -72,3 +78,21 @@ let convert_phi (ctx: context) (phi: expression): Z3.Expr.expr =
   let implication = Z3.Boolean.mk_implies ctx v_eq_c phi_z3 in
   let solver = Z3.Solver.mk_solver ctx None in
   failwith "NI"*)
+
+(* let check_subtype (env: Env.t) (ctx: Z3.context) (ty: rty) (ty': rty)=
+  let solver = Z3.Solver.mk_solver ctx None in
+  match ty, ty' with
+  | RtyBase{base_ty = bty1; phi = phi1}, RtyBase{base_ty = bty2; phi = phi2} when unify_base_type env bty1 bty2 ->
+  
+    let subtype_expr = Boolean.mk_not (ctx) (phi1)
+
+  | _ -> failwith "NI" *)
+
+let check (ctx: Z3.context) (phi1: Expr.expr) (phi2: Expr.expr) : unit = 
+  let solver = Z3.Solver.mk_solver ctx None in 
+  let subtype_expr = Boolean.mk_not ctx (Boolean.mk_implies ctx phi1 phi2) in
+  let () = Solver.add solver [subtype_expr] in 
+  match Solver.check (solver) [] with
+  | SATISFIABLE -> failwith "Type error"
+  | UNSATISFIABLE -> ()
+  | UNKNOWN -> failwith "Z3 unknown"

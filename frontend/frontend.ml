@@ -114,7 +114,7 @@ let impl struc =
         | _ -> None)
       rtys
   in
-  (* let _ = Rtycheck.bidirect_type_infer (* rtys_ctx *) implementation.structure None in *)
+  let _ = Rtycheck.bidirect_type_infer z3_ctx rtys_ctx implementation.structure None in
   let () =
     List.iter
       (fun (name, rty) ->
