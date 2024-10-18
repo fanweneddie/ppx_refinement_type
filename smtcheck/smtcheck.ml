@@ -16,15 +16,15 @@ let convert_constant (ctx: Z3.context) (c: Asttypes.constant): Z3.Expr.expr =
   | Const_int n -> Z3.Arithmetic.Integer.mk_numeral_i ctx n
   | _ -> failwith "Unsupported constant type"
 
-let rec transl_expr (ctx: Z3.context) (e: expression) =
+let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
   match e.exp_desc with
   | Texp_ident (_, {txt=Longident.Lident name; _}, _) ->
-      (* Take e.exp_type convert it to sort*)
-      (* Create variable of the sort *)
-      Arithmetic.Integer.mk_const_s ctx name
+    (* Take e.exp_type convert it to sort*)
+    (* Create variable of the sort *)
+    Arithmetic.Integer.mk_const_s ctx name
   | Texp_constant c -> convert_constant ctx c
   | Texp_apply (op_expr, args) ->
-      (* this should be recursive call here *)
+    (* this should be recursive call here *)
     (let op: string =
       match op_expr.exp_desc with
       | Texp_ident (_, {txt=Longident.Lident op; _}, _) -> op
@@ -39,20 +39,20 @@ let rec transl_expr (ctx: Z3.context) (e: expression) =
         args 
     in
     match op, args with 
-     | "-", [arg] -> Arithmetic.mk_unary_minus ctx arg
-     | "not", [arg] -> Boolean.mk_not ctx arg
-     | "=", [lhs; rhs] -> Boolean.mk_eq ctx lhs rhs
-     | "/", [lhs; rhs] -> Arithmetic.mk_div ctx lhs rhs
-     | "<", [lhs; rhs] -> Arithmetic.mk_lt ctx lhs rhs
-     | ">", [lhs; rhs] -> Arithmetic.mk_gt ctx lhs rhs
-     | "<=", [lhs; rhs] -> Arithmetic.mk_le ctx lhs rhs
-     | ">=", [lhs; rhs] -> Arithmetic.mk_ge ctx lhs rhs
-     | "+", _ -> Arithmetic.mk_add ctx args
-     | "-", _ -> Arithmetic.mk_sub ctx args
-     | "*", _ -> Arithmetic.mk_mul ctx args
-     | "&&", _ -> Boolean.mk_and ctx args
-     | "||", _ -> Boolean.mk_or ctx args
-     | _ -> failwith "Unsupported operator")
+    | "-", [arg] -> Arithmetic.mk_unary_minus ctx arg
+    | "not", [arg] -> Boolean.mk_not ctx arg
+    | "=", [lhs; rhs] -> Boolean.mk_eq ctx lhs rhs
+    | "/", [lhs; rhs] -> Arithmetic.mk_div ctx lhs rhs
+    | "<", [lhs; rhs] -> Arithmetic.mk_lt ctx lhs rhs
+    | ">", [lhs; rhs] -> Arithmetic.mk_gt ctx lhs rhs
+    | "<=", [lhs; rhs] -> Arithmetic.mk_le ctx lhs rhs
+    | ">=", [lhs; rhs] -> Arithmetic.mk_ge ctx lhs rhs
+    | "+", _ -> Arithmetic.mk_add ctx args
+    | "-", _ -> Arithmetic.mk_sub ctx args
+    | "*", _ -> Arithmetic.mk_mul ctx args
+    | "&&", _ -> Boolean.mk_and ctx args
+    | "||", _ -> Boolean.mk_or ctx args
+    | _ -> failwith "Unsupported operator")
   | _ -> failwith "transl_expr NI"
 
 
