@@ -8,7 +8,7 @@ let convert_type (ctx: Z3.context) (bty: Types.type_expr): Z3.Sort.sort =
   | Tconstr(_, [expr], _) -> (
     match Types.get_desc expr with
     | Tvar(Some "int") -> Arithmetic.Integer.mk_sort ctx
-    | _ -> failwith "NI CONVERT_TYPE"
+    | _ -> failwith "NI CONVERT_TYPE for function (todo)"
   )
   | _ -> failwith "Unsupported constant types" 
   (*match bty.ptyp_desc with
@@ -59,6 +59,12 @@ let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
     | "&&", _ -> Boolean.mk_and ctx args
     | "||", _ -> Boolean.mk_or ctx args
     | _ -> failwith "Unsupported operator")
+  | Texp_construct (_, {cstr_name; _}, _args) ->
+    (* for built-in bool types *)
+    (match cstr_name with
+    | "true" -> Boolean.mk_true ctx
+    | "false" -> Boolean.mk_false ctx
+    | _ -> failwith ("Unsupported constructor: " ^ cstr_name))
   | _ -> failwith "transl_expr NI"
 
 
