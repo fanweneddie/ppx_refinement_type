@@ -1,7 +1,9 @@
-(* open Stdlib *)
+open Stdlib
 
-let[@rty] foo = (v > 0 : int)
+let[@rty] foo =
+  let x = (true : int) in
+  (v > 3 : int)
 
-let foo = 10;;
+let foo x = x + 2;;
 
-foo
+foo 1
