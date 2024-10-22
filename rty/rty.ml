@@ -12,5 +12,12 @@ type rty_ctx = (string * rty) list
 type rty_exp = (expression * rty)
 type rty_exp_list = rty_exp list
 
-(*module Builtin = struct
-end*)
+let rec layout_rty = function
+  | RtyBase { base_ty; phi } ->
+      Printf.sprintf "{v: %s | %s}"
+        (Ocaml_helper.string_of_type_expr base_ty)
+        (Z3.Expr.to_string phi)
+  | RtyArrow { arg_name; arg_rty; ret_rty } ->
+      Printf.sprintf "%s:%s -> %s"
+        arg_name
+        (layout_rty arg_rty) (layout_rty ret_rty)

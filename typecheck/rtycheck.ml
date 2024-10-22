@@ -1,30 +1,9 @@
 open Ocaml_common
-open Rty
+open Rty_lib
+open Rty_lib.Rty
 open Z3
 
 type full_ctx = { z3: Z3.context; rty: rty_ctx }
-
-(* for printing the inferred refinment type *)
-let string_of_pattern pattern =
-  let _ = Format.flush_str_formatter () in
-  Pprintast.pattern Format.str_formatter pattern;
-  Format.flush_str_formatter ()
-
-let string_of_type_expr ty =
-  let _ = Format.flush_str_formatter () in
-  Format.fprintf Format.str_formatter "%a"
-  Printtyp.type_expr ty;
-  Format.flush_str_formatter ()
-
-let rec layout_rty = function
-  | RtyBase { base_ty; phi } ->
-      Printf.sprintf "{v:%s | %s}"
-        (string_of_type_expr base_ty)
-        (Z3.Expr.to_string phi)
-  | RtyArrow { arg_name; arg_rty; ret_rty } ->
-      Printf.sprintf "%s:%s -> %s"
-        arg_name
-        (layout_rty arg_rty) (layout_rty ret_rty)
 
 let ctx_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
     match pat.pat_desc with
@@ -126,16 +105,9 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
 and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   match e.exp_desc with
   | Texp_ident(_) -> failwith "NI TYPE_CHECK"
-  | Texp_constant(_) -> (
+  | Texp_constant(_) ->
     let ty' = type_infer ctx e in
     check_subtype e.exp_env ctx.z3 ty' ty
-     (* let ty = type_infer ctx e in
-    (match ty with
-    | RtyBase {base_ty=bty; phi=phi} 
-        when unify_base_type bty e.exp_type ->
-        Printf.printf "Call z3 here"
-    | _ -> failwith "Error at parsing refinement type at constant")*) 
-  )
   | Texp_function (_) -> (
     (* infer the type of parameter and return value of the functions. 
     todo: Here, param contains x and the body of cases contains x + 2.
@@ -143,7 +115,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     First, we infer that rty is {int, v = x} {int, v' = x + 2};
     Then, we prove {v = x and true} => {v' = x + 2, v' > 3} *)
     let ty' = type_infer ctx e in
-    Printf.printf "%s" (layout_rty ty');
+    Printf.printf "%s" (Rty.layout_rty ty');
     check_subtype e.exp_env ctx.z3 ty' ty
     )
   | Texp_let(_)

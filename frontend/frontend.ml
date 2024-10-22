@@ -1,35 +1,9 @@
 open Ppxlib
 open Parsetree
 open Ocaml_common
-open Rty
+open Rty_lib
+open Rty_lib.Rty
 open Typecheck
-
-let string_of_pattern pattern =
-  let _ = Format.flush_str_formatter () in
-  Pprintast.pattern Format.str_formatter pattern;
-  Format.flush_str_formatter ()
-
-let string_of_type_expr ty =
-  let _ = Format.flush_str_formatter () in
-  Format.fprintf Format.str_formatter "%a"
-  Printtyp.type_expr ty;
-  Format.flush_str_formatter ()
-
-let string_of_raw_type_expr ty =
-  let _ = Format.flush_str_formatter () in
-  Format.fprintf Format.str_formatter "%a"
-  Printtyp.raw_type_expr ty;
-  Format.flush_str_formatter ()
-
-let rec layout_rty = function
-  | RtyBase { base_ty; phi } ->
-      Printf.sprintf "{v:%s | %s}"
-        (string_of_raw_type_expr base_ty)
-        (Z3.Expr.to_string phi)
-  | RtyArrow { arg_name; arg_rty; ret_rty } ->
-      Printf.sprintf "%s:%s -> %s"
-        arg_name
-        (layout_rty arg_rty) (layout_rty ret_rty)
 
 let attr_is_rty attribute = String.equal "rty" attribute.attr_name.txt
 
@@ -99,7 +73,7 @@ let get_impl_from_typed_items name implementation =
           let pat =
             Ocaml_common.Untypeast.untype_pattern value_binding.vb_pat
           in
-          if String.equal (string_of_pattern pat) name then
+          if String.equal (Ocaml_helper.string_of_pattern pat) name then
             Some value_binding.vb_expr
           else None
       | _ -> None)
@@ -133,7 +107,7 @@ let impl struc =
               (name)
               (Pprintast.string_of_expression
               @@ Ocaml_common.Untypeast.untype_expression impl)
-              (layout_rty rty))
+              (Rty.layout_rty rty))
       rtys_ctx
   in
   struc

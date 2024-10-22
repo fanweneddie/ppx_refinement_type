@@ -1,8 +1,7 @@
 (library
- (public_name ppx_refinement_type.rty)
- (name rty)
+ (public_name ppx_refinement_type.ty_lib)
+ (name rty_lib)
  (wrapped true)
  (libraries ppxlib compiler-libs.common z3)
- (modules
-   rty)
+ (modules ocaml_helper rty)
 )
