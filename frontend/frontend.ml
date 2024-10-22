@@ -15,10 +15,16 @@ let string_of_type_expr ty =
   Printtyp.type_expr ty;
   Format.flush_str_formatter ()
 
+let string_of_raw_type_expr ty =
+  let _ = Format.flush_str_formatter () in
+  Format.fprintf Format.str_formatter "%a"
+  Printtyp.raw_type_expr ty;
+  Format.flush_str_formatter ()
+
 let rec layout_rty = function
   | RtyBase { base_ty; phi } ->
       Printf.sprintf "{v:%s | %s}"
-        (string_of_type_expr base_ty)
+        (string_of_raw_type_expr base_ty)
         (Z3.Expr.to_string phi)
   | RtyArrow { arg_name; arg_rty; ret_rty } ->
       Printf.sprintf "%s:%s -> %s"
