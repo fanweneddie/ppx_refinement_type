@@ -1,9 +1,7 @@
-open Stdlib
+(*open Stdlib*)
 
-let[@rty] foo =
-  let x = (true : int) in
-  (v > 3 : int)
+let[@rty] foo = (v = false : bool);;
 
-let foo x = x + 2;;
+let foo = true;;
 
-foo 1
+foo

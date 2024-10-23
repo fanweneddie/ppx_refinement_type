@@ -5,27 +5,26 @@ open Z3
 (* very complicated *)
 let convert_type (ctx: Z3.context) (bty: Types.type_expr): Z3.Sort.sort = 
   match Types.get_desc bty with
-  | Tconstr(_, [expr], _) -> (
-    match Types.get_desc expr with
-    | Tvar(Some "int") -> Arithmetic.Integer.mk_sort ctx
-    | _ -> failwith "NI CONVERT_TYPE for function (todo)"
-  )
-  | _ -> failwith "Unsupported constant types" 
+  | Tconstr(Pident(id), _, _) -> 
+    (match Ident.name id with
+    | "int" -> Arithmetic.Integer.mk_sort ctx
+    | "bool" -> Boolean.mk_sort ctx
+    | _ -> failwith "Unsupported type")
+  | _ -> failwith "Type not constructor" 
 
 let convert_constant (ctx: Z3.context) (c: Asttypes.constant): Z3.Expr.expr =
   match c with
-  | Const_int n -> Z3.Arithmetic.Integer.mk_numeral_i ctx n
+  | Const_int n -> Arithmetic.Integer.mk_numeral_i ctx n
   | _ -> failwith "Unsupported constant type"
 
 let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
   match e.exp_desc with
   | Texp_ident (_, {txt=Longident.Lident name; _}, _) ->
-    (* Take e.exp_type convert it to sort*)
-    (* Create variable of the sort *)
-    Arithmetic.Integer.mk_const_s ctx name
+    let sort = convert_type ctx e.exp_type in
+    Expr.mk_const_s ctx name sort
+    (*Arithmetic.Integer.mk_const_s ctx name*)
   | Texp_constant c -> convert_constant ctx c
   | Texp_apply (op_expr, args) ->
-    (* this should be recursive call here *)
     (let op: string =
       match op_expr.exp_desc with
       | Texp_ident (_, {txt=Longident.Lident op; _}, _) -> op
@@ -54,7 +53,7 @@ let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
     | "&&", _ -> Boolean.mk_and ctx args
     | "||", _ -> Boolean.mk_or ctx args
     | _ -> failwith "Unsupported operator")
-  | Texp_construct (_, {cstr_name; _}, _args) ->
+  | Texp_construct (_, {cstr_name; _}, _) ->
     (match cstr_name with
     | "true" -> Boolean.mk_true ctx
     | "false" -> Boolean.mk_false ctx
