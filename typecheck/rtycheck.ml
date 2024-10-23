@@ -5,12 +5,12 @@ open Z3
 
 type full_ctx = { z3: Z3.context; rty: rty_ctx }
 
-let ctx_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
+let ctx_lookup (ctx: rty_ctx) (ident: string): (string * rty) option =
+  List.find_opt (fun (name, _) -> String.equal name ident) ctx 
+
+let ctx_pat_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
   match pat.pat_desc with
-  | Tpat_var(_, {txt=pat_name; _}) ->
-    List.find_opt
-      (fun (name, _) -> String.equal name pat_name)
-      ctx
+  | Tpat_var(_, {txt=pat_name; _}) -> ctx_lookup ctx pat_name
   | _ -> None
 
 let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): bool =
@@ -44,10 +44,10 @@ let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
 let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   match e.exp_desc with
   | Texp_ident (_, {txt=Longident.Lident name; _}, _) ->
-    (match name with
-    | "+" -> Rty.Builtin.plus ctx.z3
-    | _ -> failwith "Unsupported operation")
-  | Texp_ident (_) -> failwith "Ident not supported"
+    (match ctx_lookup ctx.rty name with
+    | None -> failwith "Need to implement function that converts type_expr to Rty"
+    | Some (_, ty) -> ty)
+  | Texp_ident (_) -> failwith "Other ident not supported"
   | Texp_constant(value) ->
       let sort = Smtcheck.convert_type ctx.z3 e.exp_type in
       RtyBase
@@ -197,7 +197,7 @@ let type_infer_item (ctx: full_ctx) (item: Typedtree.structure_item) : rty_exp o
   match item.str_desc with
   | Tstr_eval (_e, _) -> None
   | Tstr_value (_, [vb]) ->
-    (let pty = ctx_lookup ctx.rty vb.vb_pat in
+    (let pty = ctx_pat_lookup ctx.rty vb.vb_pat in
     match pty with
     | None -> None
     | Some (_, ty) -> type_check ctx vb.vb_expr ty; None)

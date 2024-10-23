@@ -101,6 +101,7 @@ let impl struc =
         | _ -> None)
       rtys
   in
+  let rtys_ctx = Rty.Builtin.add_builtins z3_ctx rtys_ctx in
   let _ = Rtycheck.bidirect_type_infer z3_ctx rtys_ctx implementation.structure None in
   let () =
     List.iter

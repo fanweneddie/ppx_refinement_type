@@ -2,6 +2,10 @@
 
 let[@rty] foo = (v > 0 : int);;
 
-let foo = 40;;
+let[@rty] bar = (v > 3 : int);;
 
-foo
+let foo = 51+50+200;;
+
+let bar = 52 + (49);;
+
+foo + bar
