@@ -3,7 +3,7 @@ open Types
 open Typedtree
 open Z3
 
-(* arg_name being type string might not be good *)
+(* arg_name being type Expr.expr might not be good *)
 type rty =
   | RtyBase of { base_ty : type_expr; phi : Expr.expr }
   | RtyArrow of { arg_name : Expr.expr; arg_rty : rty; ret_rty : rty }

@@ -94,7 +94,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         (fun (l, arg_rty) arg ->
           match arg_rty with
           | RtyArrow {arg_name; arg_rty; ret_rty} ->
-            type_check ctx arg arg_rty; (arg_name::l, ret_rty)
+            type_check ctx arg arg_rty; (l @ [arg_name], ret_rty)
           | _ -> failwith "Not rty arrow")
         ([], ty) arg_exprs
     in
