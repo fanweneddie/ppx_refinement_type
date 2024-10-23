@@ -19,16 +19,23 @@ let item_is_rty item =
 let rec rty_to_type_expr (rty: rty): Types.type_expr =
   match rty with
   | RtyBase { base_ty; _ } -> base_ty
-  | RtyArrow { arg_name ; arg_rty; ret_rty } ->
+  | RtyArrow { arg_rty; ret_rty; _ } ->
       let arg_ty = rty_to_type_expr arg_rty in
       let ret_ty = rty_to_type_expr ret_rty in
       Types.create_expr 
-        (Tarrow (Labelled arg_name, arg_ty, ret_ty, Types.commu_ok))
+        (Tarrow (Nolabel, arg_ty, ret_ty, Types.commu_ok))
         ~level:0 ~scope:0 ~id:0
 
 let pat_var_name pat = 
   match pat.ppat_desc with
   | Ppat_var {txt; _} -> txt
+  | _ -> failwith "Not variable"
+
+let pat_var_expr z3_ctx pat ty = 
+  match pat.ppat_desc with
+  | Ppat_var {txt; _} ->
+    let sort = Smtcheck.convert_type z3_ctx ty in
+    Z3.Expr.mk_const_s z3_ctx txt sort
   | _ -> failwith "Not variable"
 
 let rec parse_rty z3_ctx env expr =
@@ -41,8 +48,8 @@ let rec parse_rty z3_ctx env expr =
             let arg_rty = parse_rty z3_ctx env binding.pvb_expr in
             let ty = rty_to_type_expr arg_rty in
             let val_desc = Ocaml_typecheck.create_val_desc ty in
-            let name = pat_var_name binding.pvb_pat in
-            let (_, new_env) = Env.enter_value name val_desc env in
+            let name = pat_var_expr z3_ctx binding.pvb_pat ty in
+            let (_, new_env) = Env.enter_value (pat_var_name binding.pvb_pat) val_desc env in
             (new_env, l @ [(name,arg_rty)]))
           (env, []) bindings
       in

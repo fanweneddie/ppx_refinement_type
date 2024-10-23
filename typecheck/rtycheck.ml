@@ -27,9 +27,27 @@ let check_subtype (env: Env.t) (ctx: Z3.context) (ty': rty) (ty: rty)=
     Smtcheck.check ctx phi1 phi2
   | _ -> failwith "NI CHECK_SUBTYPE"
 
+let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
+  match ty with
+  | RtyBase {base_ty; phi} ->
+    let phi = Expr.substitute_one phi name expr in
+    RtyBase {base_ty; phi}
+  | RtyArrow {arg_name; arg_rty; ret_rty} ->
+    let arg_rty = subst arg_rty name expr in 
+    if Expr.equal arg_name name 
+    then 
+      RtyArrow {arg_name; arg_rty; ret_rty}
+    else
+      let ret_rty = subst arg_rty name expr in
+      RtyArrow {arg_name; arg_rty; ret_rty}
+
 let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   match e.exp_desc with
-  | Texp_ident(_) -> failwith "NI TYPE_INFER"
+  | Texp_ident (_, {txt=Longident.Lident name; _}, _) ->
+    (match name with
+    | "+" -> Rty.Builtin.plus ctx.z3
+    | _ -> failwith "Unsupported operation")
+  | Texp_ident (_) -> failwith "Ident not supported"
   | Texp_constant(value) ->
       let sort = Smtcheck.convert_type ctx.z3 e.exp_type in
       RtyBase
@@ -40,8 +58,8 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
             (Smtcheck.convert_constant ctx.z3 value)
         }
   | Texp_let(_) -> failwith "NI TYPE_INFER for Texp_let"
-  | Texp_function { arg_label = _arg_label; param; cases; _ } -> 
-    (let param_name = Ident.name param in
+  | Texp_function(_) -> failwith "Temporary" 
+    (*(let param_name = Ident.name param in
     let param_type_expr =
       (match Types.get_desc e.exp_type with
         | Types.Tarrow (_, param_type_expr, _, _) ->
@@ -60,15 +78,32 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         (* get ret_rty recursively *)
         let return_rty = type_infer ctx body in
         RtyArrow {arg_name = param_name; arg_rty = argument_rty; ret_rty = return_rty}
-      | _ -> failwith "Unexpected number of cases in function"))
-  | Texp_apply(_) ->
-    let sub_phi = Smtcheck.transl_expr ctx.z3 e in
-    let phi = Boolean.mk_eq ctx.z3
-      (Arithmetic.Integer.mk_const_s ctx.z3 "v") sub_phi in
-    RtyBase {
-      base_ty = e.exp_type;
-      phi = phi
-    }
+      | _ -> failwith "Unexpected number of cases in function"))*)
+  | Texp_apply(op, args) ->
+    let ty = type_infer ctx op in
+    let arg_exprs = 
+      List.map 
+        (fun arg -> 
+          match arg with
+          | (_, Some e) -> e 
+          | _ -> failwith "Labelled partial ap not supported")
+        args
+    in
+    let (arg_names, final_ty) = 
+      List.fold_left 
+        (fun (l, arg_rty) arg ->
+          match arg_rty with
+          | RtyArrow {arg_name; arg_rty; ret_rty} ->
+            type_check ctx arg arg_rty; (arg_name::l, ret_rty)
+          | _ -> failwith "Not rty arrow")
+        ([], ty) arg_exprs
+    in
+    let arg_z3_exprs = 
+      List.map (fun arg -> Smtcheck.transl_expr ctx.z3 arg) arg_exprs
+    in
+    List.fold_left2
+      (fun ty arg_name arg_expr -> subst ty arg_name arg_expr)
+      final_ty arg_names arg_z3_exprs
   | Texp_match(_)
   | Texp_try(_)
   | Texp_tuple(_)
@@ -110,6 +145,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
 and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   match e.exp_desc with
   | Texp_ident(_) -> failwith "NI TYPE_CHECK"
+  | Texp_apply(_)
   | Texp_constant(_) ->
     let ty' = type_infer ctx e in
     check_subtype e.exp_env ctx.z3 ty' ty
@@ -123,7 +159,6 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     Printf.printf "%s" (Rty.layout_rty ty');
     check_subtype e.exp_env ctx.z3 ty' ty
   | Texp_let(_)
-  | Texp_apply(_)
   | Texp_match(_)
   | Texp_try(_)
   | Texp_tuple(_) -> failwith "NI TYPE_CHECK_3"

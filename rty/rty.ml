@@ -1,11 +1,12 @@
 open Ocaml_common
 open Types
 open Typedtree
+open Z3
 
 (* arg_name being type string might not be good *)
 type rty =
-  | RtyBase of { base_ty : type_expr; phi : Z3.Expr.expr }
-  | RtyArrow of { arg_name : string; arg_rty : rty; ret_rty : rty }
+  | RtyBase of { base_ty : type_expr; phi : Expr.expr }
+  | RtyArrow of { arg_name : Expr.expr; arg_rty : rty; ret_rty : rty }
 
 type rty_ctx = (string * rty) list
 
@@ -19,5 +20,29 @@ let rec layout_rty = function
         (Z3.Expr.to_string phi)
   | RtyArrow { arg_name; arg_rty; ret_rty } ->
       Printf.sprintf "%s:%s -> %s"
-        arg_name
+        (Z3.Expr.to_string arg_name)
         (layout_rty arg_rty) (layout_rty ret_rty)
+
+
+module Builtin = struct
+  let plus (ctx: Z3.context): rty = 
+    let x = Arithmetic.Integer.mk_const_s ctx "x" in
+    let y = Arithmetic.Integer.mk_const_s ctx "y" in
+    let v = Arithmetic.Integer.mk_const_s ctx "v" in
+    let phi' = Boolean.mk_eq ctx v (Arithmetic.mk_add ctx [x; y]) in
+    RtyArrow {
+      arg_name = x;
+      arg_rty = RtyBase {
+        base_ty = Predef.type_int; phi = Boolean.mk_true ctx
+      };
+      ret_rty = RtyArrow {
+        arg_name = y;
+        arg_rty = RtyBase {
+          base_ty = Predef.type_int; phi = Boolean.mk_true ctx
+        };
+        ret_rty = RtyBase {
+          base_ty = Predef.type_int; phi = phi'
+        }
+      }
+    }
+end

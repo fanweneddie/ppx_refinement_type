@@ -1,7 +1,7 @@
 (*open Stdlib*)
 
-let[@rty] foo = (v = false : bool);;
+let[@rty] foo = (v > 0 : int);;
 
-let foo = true;;
+let foo = 40;;
 
 foo
