@@ -20,11 +20,11 @@ let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): b
   with
   | _ -> false
 
-let check_subtype (env: Env.t) (ctx: Z3.context) (ty': rty) (ty: rty)=
+let check_subtype (env: Env.t) (ctx: full_ctx) (ty': rty) (ty: rty)=
   match ty', ty with
   | RtyBase{base_ty = bty1; phi = phi1}, RtyBase{base_ty = bty2; phi = phi2} 
     when unify_base_type env bty1 bty2 ->  
-    Smtcheck.check ctx phi1 phi2
+    Smtcheck.check ctx.z3 phi1 phi2
   | _ -> failwith "NI CHECK_SUBTYPE"
 
 let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
@@ -148,16 +148,22 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_apply(_)
   | Texp_constant(_) ->
     let ty' = type_infer ctx e in
-    check_subtype e.exp_env ctx.z3 ty' ty
-  | Texp_function (_) ->
+    check_subtype e.exp_env ctx ty' ty
+  | Texp_function {param = Scoped{name; _}; cases = [{c_rhs: _}]: _} ->
     (* infer the type of parameter and return value of the functions. 
     todo: Here, param contains x and the body of cases contains x + 2.
     We need to unprove x in int => x + 2 > 3. 
     First, we infer that rty is {int, v = x} {int, v' = x + 2};
     Then, we prove {v = x and true} => {v' = x + 2, v' > 3} *)
-    let ty' = type_infer ctx e in
+    match ty with
+    | RtyBase (_) -> failwith "TYPE ERROR: TYPE_CHECK"
+    | RtyArrow {arg_name; arg_rty; ret_rty} ->
+      let new_ctx = {z3 = ctx.z3; rty = (name, arg_rty)::ctx.rty} in 
+      type_check new_ctx c_rhs ret_rty
+
+    (* let ty' = type_infer ctx e in
     Printf.printf "%s" (Rty.layout_rty ty');
-    check_subtype e.exp_env ctx.z3 ty' ty
+    check_subtype e.exp_env ctx ty' ty *)
   | Texp_let(_)
   | Texp_match(_)
   | Texp_try(_)
@@ -166,7 +172,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     (match cstr_name with
     | ("true" | "false") ->
       let ty' = type_infer ctx e in
-      check_subtype e.exp_env ctx.z3 ty' ty
+      check_subtype e.exp_env ctx ty' ty
     | _ -> failwith "Other constructors not supported")
   | Texp_variant(_)
   | Texp_record(_)
