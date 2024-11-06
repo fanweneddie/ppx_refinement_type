@@ -183,6 +183,14 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
       (* check that arg_name is a Z3 variable which has the same name as name *)
       let new_ctx = {z3 = ctx.z3; rty = (Ident.name param, arg_rty)::ctx.rty} in
       type_check new_ctx c_rhs ret_rty)
+  | Texp_let(Nonrecursive, [vb], expr) ->
+    let rty1 = type_infer ctx vb.vb_expr in
+    (match vb.vb_pat.pat_desc with
+    | Tpat_var(ident, _) ->
+      let name = Ident.name ident in
+      let new_ctx = {z3 = ctx.z3; rty = (name, rty1)::ctx.rty} in
+      type_check new_ctx expr ty
+    | _ -> failwith "other cases in let pat")
   | Texp_function(_)
   | Texp_let(_)
   | Texp_match(_)
