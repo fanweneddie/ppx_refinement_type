@@ -3,7 +3,7 @@ open Typedtree
 open Z3
 
 (* very complicated *)
-let convert_type (ctx: Z3.context) (bty: Types.type_expr): Z3.Sort.sort = 
+let convert_type (ctx: Z3.context) (bty: Types.type_expr): Sort.sort = 
   match Types.get_desc bty with
   | Tconstr(Pident(id), _, _) -> 
     (match Ident.name id with
@@ -12,10 +12,14 @@ let convert_type (ctx: Z3.context) (bty: Types.type_expr): Z3.Sort.sort =
     | _ -> failwith "Unsupported type")
   | _ -> failwith "Type not constructor" 
 
-let convert_constant (ctx: Z3.context) (c: Asttypes.constant): Z3.Expr.expr =
+let convert_constant (ctx: Z3.context) (c: Asttypes.constant): Expr.expr =
   match c with
   | Const_int n -> Arithmetic.Integer.mk_numeral_i ctx n
   | _ -> failwith "Unsupported constant type"
+
+let create_var (ctx: Z3.context) (name: string) (bty: Types.type_expr): Expr.expr =
+  let sort = convert_type ctx bty in
+  Expr.mk_const_s ctx name sort
 
 let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
   match e.exp_desc with
@@ -64,10 +68,11 @@ let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
 let convert_phi (ctx: context) (phi: expression): Z3.Expr.expr =
   transl_expr ctx phi
 
-let check (ctx: Z3.context) (phi1: Expr.expr) (phi2: Expr.expr) : unit = 
+let check (ctx: Z3.context) (c: Expr.expr) : unit =
+  print_endline (Expr.to_string c);
   let solver = Z3.Solver.mk_solver ctx None in 
-  let subtype_expr = Boolean.mk_not ctx (Boolean.mk_implies ctx phi1 phi2) in
-  let () = Solver.add solver [subtype_expr] in 
+  let subtype_expr = Boolean.mk_not ctx c in
+  let _ = Solver.add solver [subtype_expr] in 
   match Solver.check (solver) [] with
   | SATISFIABLE -> failwith "Type error"
   | UNSATISFIABLE -> ()

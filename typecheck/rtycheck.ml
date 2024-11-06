@@ -1,5 +1,4 @@
 open Ocaml_common
-open Rty_lib
 open Rty_lib.Rty
 open Z3
 
@@ -20,13 +19,6 @@ let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): b
   with
   | _ -> false
 
-let check_subtype (env: Env.t) (ctx: full_ctx) (ty': rty) (ty: rty)=
-  match ty', ty with
-  | RtyBase{base_ty = bty1; phi = phi1}, RtyBase{base_ty = bty2; phi = phi2} 
-    when unify_base_type env bty1 bty2 ->  
-    Smtcheck.check ctx.z3 phi1 phi2
-  | _ -> failwith "NI CHECK_SUBTYPE"
-
 let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
   match ty with
   | RtyBase {base_ty; phi} ->
@@ -34,20 +26,40 @@ let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
     RtyBase {base_ty; phi}
   | RtyArrow {arg_name; arg_rty; ret_rty} ->
     let arg_rty = subst arg_rty name expr in 
-    if Expr.equal arg_name name 
-    then 
+    if Expr.equal arg_name name then 
       RtyArrow {arg_name; arg_rty; ret_rty}
     else
       let ret_rty = subst arg_rty name expr in
       RtyArrow {arg_name; arg_rty; ret_rty}
 
+(* use arg_name to replace it with v *)
+let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
+  List.fold_left
+    (fun pred (name, ty) ->
+      match ty with
+      | RtyBase {base_ty; phi} ->
+          let v = Smtcheck.create_var ctx.z3 "v" base_ty in
+          let x = Smtcheck.create_var ctx.z3 name base_ty in
+          let phi = Expr.substitute_one phi v x in
+          Boolean.mk_implies ctx.z3 phi pred
+      | RtyArrow (_) -> pred)
+    pred ctx.rty
+
+let check_subtype (env: Env.t) (ctx: full_ctx) (ty': rty) (ty: rty) =
+  match ty', ty with
+  | RtyBase{base_ty = bty1; phi = phi1}, RtyBase{base_ty = bty2; phi = phi2} 
+    when unify_base_type env bty1 bty2 ->
+      let c = entailment ctx (Boolean.mk_implies ctx.z3 phi1 phi2) in
+      Smtcheck.check ctx.z3 c
+  | _ -> failwith "NI CHECK_SUBTYPE"
+
 let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   match e.exp_desc with
-  | Texp_ident (_, {txt=Longident.Lident name; _}, _) ->
+  | Texp_ident (path, _, _) ->
+    let name = Path.name path in
     (match ctx_lookup ctx.rty name with
     | None -> failwith "Need to implement function that converts type_expr to Rty"
     | Some (_, ty) -> ty)
-  | Texp_ident (_) -> failwith "Other ident not supported"
   | Texp_constant(value) ->
       let sort = Smtcheck.convert_type ctx.z3 e.exp_type in
       RtyBase
@@ -80,6 +92,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         RtyArrow {arg_name = param_name; arg_rty = argument_rty; ret_rty = return_rty}
       | _ -> failwith "Unexpected number of cases in function"))*)
   | Texp_apply(op, args) ->
+    (* Note: what if op does not have a refinement type? *)
     let ty = type_infer ctx op in
     let arg_exprs = 
       List.map 
@@ -144,26 +157,28 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
 
 and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   match e.exp_desc with
-  | Texp_ident(_) -> failwith "NI TYPE_CHECK"
+  | Texp_ident (path, _, value_desc) ->
+      let name = Path.name path in
+      let ty' = 
+        (match ctx_lookup ctx.rty name with
+        | None -> RtyBase{base_ty=value_desc.val_type; phi=Boolean.mk_true ctx.z3}
+        | Some (_, ty') -> ty')
+      in
+      (* I am not sure if this is correct *)
+      check_subtype e.exp_env ctx ty' ty;
+      check_subtype e.exp_env ctx ty ty'
   | Texp_apply(_)
   | Texp_constant(_) ->
     let ty' = type_infer ctx e in
     check_subtype e.exp_env ctx ty' ty
-  | Texp_function {param = Scoped{name; _}; cases = [{c_rhs: _}]: _} ->
-    (* infer the type of parameter and return value of the functions. 
-    todo: Here, param contains x and the body of cases contains x + 2.
-    We need to unprove x in int => x + 2 > 3. 
-    First, we infer that rty is {int, v = x} {int, v' = x + 2};
-    Then, we prove {v = x and true} => {v' = x + 2, v' > 3} *)
-    match ty with
-    | RtyBase (_) -> failwith "TYPE ERROR: TYPE_CHECK"
-    | RtyArrow {arg_name; arg_rty; ret_rty} ->
-      let new_ctx = {z3 = ctx.z3; rty = (name, arg_rty)::ctx.rty} in 
-      type_check new_ctx c_rhs ret_rty
-
-    (* let ty' = type_infer ctx e in
-    Printf.printf "%s" (Rty.layout_rty ty');
-    check_subtype e.exp_env ctx ty' ty *)
+  | Texp_function {param; cases = [{c_rhs; _}]; _} ->
+    (match ty with
+    | RtyBase (_) -> failwith "Type error: Function being analyzed with RtyBase type"
+    | RtyArrow {arg_rty; ret_rty; _} ->
+      (* check that arg_name is a Z3 variable which has the same name as name *)
+      let new_ctx = {z3 = ctx.z3; rty = (Ident.name param, arg_rty)::ctx.rty} in
+      type_check new_ctx c_rhs ret_rty)
+  | Texp_function(_)
   | Texp_let(_)
   | Texp_match(_)
   | Texp_try(_)
