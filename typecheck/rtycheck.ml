@@ -38,10 +38,10 @@ let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
     (fun pred (name, ty) ->
       match ty with
       | RtyBase {base_ty; phi} ->
-          let v = Smtcheck.create_var ctx.z3 "v" base_ty in
-          let x = Smtcheck.create_var ctx.z3 name base_ty in
-          let phi = Expr.substitute_one phi v x in
-          Boolean.mk_implies ctx.z3 phi pred
+        let v = Smtcheck.create_var ctx.z3 "v" base_ty in
+        let x = Smtcheck.create_var ctx.z3 name base_ty in
+        let phi = Expr.substitute_one phi v x in
+        Boolean.mk_implies ctx.z3 phi pred
       | RtyArrow (_) -> pred)
     pred ctx.rty
 
@@ -162,6 +162,11 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
       let ty' = 
         (match ctx_lookup ctx.rty name with
         | None -> RtyBase{base_ty=value_desc.val_type; phi=Boolean.mk_true ctx.z3}
+        | Some (_, RtyBase{base_ty; phi}) -> 
+            let v = Smtcheck.create_var ctx.z3 "v" base_ty in
+            let x = Smtcheck.create_var ctx.z3 name base_ty in
+            let phi = Expr.substitute_one phi v x in
+            RtyBase{base_ty; phi}
         | Some (_, ty') -> ty')
       in
       (* I am not sure if this is correct *)

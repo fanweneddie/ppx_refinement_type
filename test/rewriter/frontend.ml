@@ -13,4 +13,6 @@ let bar = 52 + (-48);;*)
 
 let baz x = x + 2;;
 
+baz 1
+
 (* baz (foo + bar) *)
