@@ -71,28 +71,8 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         }
   | Texp_let(_) -> failwith "NI TYPE_INFER for Texp_let"
   | Texp_function(_) -> failwith "Temporary" 
-    (*(let param_name = Ident.name param in
-    let param_type_expr =
-      (match Types.get_desc e.exp_type with
-        | Types.Tarrow (_, param_type_expr, _, _) ->
-                       (param_type_expr)
-        | _ -> failwith "Expected a function type") in
-    (* get arg_rty *)
-    let argument_rty = RtyBase {
-      base_ty = param_type_expr;
-      phi = Boolean.mk_eq ctx.z3 
-        (Arithmetic.Integer.mk_const_s ctx.z3 "v") 
-        (Arithmetic.Integer.mk_const_s ctx.z3 param_name)
-    } in
-    (match cases with
-      | [case] ->
-        let body = case.c_rhs in
-        (* get ret_rty recursively *)
-        let return_rty = type_infer ctx body in
-        RtyArrow {arg_name = param_name; arg_rty = argument_rty; ret_rty = return_rty}
-      | _ -> failwith "Unexpected number of cases in function"))*)
   | Texp_apply(op, args) ->
-    (* Note: what if op does not have a refinement type? *)
+    (* Note: what if op does not have a refinement type? See Texp_ident*)
     let ty = type_infer ctx op in
     let arg_exprs = 
       List.map 
@@ -162,16 +142,10 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
       let ty' = 
         (match ctx_lookup ctx.rty name with
         | None -> RtyBase{base_ty=value_desc.val_type; phi=Boolean.mk_true ctx.z3}
-        | Some (_, RtyBase{base_ty; phi}) -> 
-            let v = Smtcheck.create_var ctx.z3 "v" base_ty in
-            let x = Smtcheck.create_var ctx.z3 name base_ty in
-            let phi = Expr.substitute_one phi v x in
-            RtyBase{base_ty; phi}
         | Some (_, ty') -> ty')
       in
-      (* I am not sure if this is correct *)
-      check_subtype e.exp_env ctx ty' ty;
-      check_subtype e.exp_env ctx ty ty'
+      (* Check if this is correct *)
+      check_subtype e.exp_env ctx ty' ty
   | Texp_apply(_)
   | Texp_constant(_) ->
     let ty' = type_infer ctx e in
@@ -229,8 +203,9 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
 
 let type_infer_item (ctx: full_ctx) (item: Typedtree.structure_item) : rty_exp option =
   match item.str_desc with
-  | Tstr_eval (_e, _) -> None
+  | Tstr_eval (e, _) ->  Some (e, type_infer ctx e) 
   | Tstr_value (_, [vb]) ->
+    (* Fix: get ctx.rty up to pat *)
     (let pty = ctx_pat_lookup ctx.rty vb.vb_pat in
     match pty with
     | None -> None
