@@ -153,8 +153,13 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_function {param; cases = [{c_rhs; _}]; _} ->
     (match ty with
     | RtyBase (_) -> failwith "Type error: Function being analyzed with RtyBase type"
-    | RtyArrow {arg_rty; ret_rty; _} ->
+    | RtyArrow {arg_name; arg_rty; ret_rty;} ->
+      
       (* check that arg_name is a Z3 variable which has the same name as name *)
+      if (Z3.Expr.to_string arg_name) <> (Ident.name param) then
+        failwith (Printf.sprintf "name mismatch for parameter %s and argument %s\n" 
+          (Ident.name param) (Z3.Expr.to_string arg_name));
+      
       let new_ctx = {z3 = ctx.z3; rty = (Ident.name param, arg_rty)::ctx.rty} in
       type_check new_ctx c_rhs ret_rty)
   | Texp_let(Nonrecursive, [vb], expr) ->
