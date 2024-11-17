@@ -181,12 +181,32 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
       let ty' = type_infer ctx e in
       check_subtype e.exp_env ctx ty' ty
     | _ -> failwith "Other constructors not supported")
+  | Texp_ifthenelse(if_expr, then_expr, else_expr_option) ->
+    (match else_expr_option with
+    | None -> failwith "else expression shouldn't be empty"
+    | Some else_expr ->
+      (* this name cannot be the variable name in valid OCaml, so it is fresh *)
+      let y_free_name = "-y_free" in
+      (* type check Gamma |- x <= bool *)
+      let bool_ty = RtyBase {base_ty = Predef.type_bool; phi = Boolean.mk_true ctx.z3} in
+      type_check ctx if_expr bool_ty;
+      (* type check Gamma; y:{int:x} |- e1 <= t for the then expression *)
+      let if_expr_pos_z3 = Smtcheck.transl_expr ctx.z3 if_expr in
+      let if_expr_pos_rty = RtyBase {base_ty = Predef.type_int; phi = if_expr_pos_z3} in
+      let new_rty_ctx_then = (y_free_name, if_expr_pos_rty)::ctx.rty in
+      let new_ctx_then = {z3 = ctx.z3; rty = new_rty_ctx_then} in
+      type_check new_ctx_then then_expr ty;
+      (* type check Gamma; y:{int:!x} |- e1 <= t for the else expression *)
+      let if_expr_neg_z3 = Boolean.mk_not ctx.z3 if_expr_pos_z3 in
+      let if_expr_neg_rty = RtyBase {base_ty = Predef.type_int; phi = if_expr_neg_z3} in
+      let new_rty_ctx_else = (y_free_name, if_expr_neg_rty)::ctx.rty in
+      let new_ctx_else = {z3 = ctx.z3; rty = new_rty_ctx_else} in
+      type_check new_ctx_else else_expr ty;)
   | Texp_variant(_)
   | Texp_record(_)
   | Texp_field(_)
   | Texp_setfield(_)
   | Texp_array(_)
-  | Texp_ifthenelse(_)
   | Texp_sequence(_)
   | Texp_while(_)
   | Texp_for(_)

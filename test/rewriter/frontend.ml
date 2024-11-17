@@ -18,3 +18,16 @@ let baz x y = x + y;;
 baz (1+foo)
 
 (* baz (foo + bar) *)
+
+let[@rty] bar1 = (v > 0 : int);;
+
+let bar1 = if true then 1 else 0;;
+
+bar1;;
+
+let[@rty] bar2 = 
+  let x = (true: int) in (v > 0: int);;
+
+let bar2 x = if x > 0 then x else 1 + (-x);;
+
+bar2 2;;
