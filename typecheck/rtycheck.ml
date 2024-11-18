@@ -39,7 +39,7 @@ let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
       match ty with
       | RtyBase {base_ty; phi} ->
         let v = Smtcheck.create_var ctx.z3 "v" base_ty in
-        let x = Smtcheck.create_var ctx.z3 name base_ty in
+        let x = Smtcheck.create_var ctx.z3 ("var_" ^ name) base_ty in
         let phi = Expr.substitute_one phi v x in
         Boolean.mk_implies ctx.z3 phi pred
       | RtyArrow (_) -> pred)
@@ -153,8 +153,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_function {param; cases = [{c_rhs; _}]; _} ->
     (match ty with
     | RtyBase (_) -> failwith "Type error: Function being analyzed with RtyBase type"
-    | RtyArrow {arg_name; arg_rty; ret_rty;} ->
-      
+    | RtyArrow {arg_name; arg_rty; ret_rty;} -> 
       (* check that arg_name is a Z3 variable which has the same name as name *)
       if String.equal (Z3.Expr.to_string arg_name) (Ident.name param) then
         let new_ctx = {z3 = ctx.z3; rty = (Ident.name param, arg_rty)::ctx.rty} in

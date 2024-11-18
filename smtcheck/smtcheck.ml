@@ -23,7 +23,8 @@ let create_var (ctx: Z3.context) (name: string) (bty: Types.type_expr): Expr.exp
 
 let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
   match e.exp_desc with
-  | Texp_ident (_, {txt=Longident.Lident name; _}, _) ->
+  | Texp_ident (path, _, _) ->
+    let name = "var_" ^ Path.name path in
     let sort = convert_type ctx e.exp_type in
     Expr.mk_const_s ctx name sort
     (*Arithmetic.Integer.mk_const_s ctx name*)

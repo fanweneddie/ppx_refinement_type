@@ -63,7 +63,10 @@ let rec parse_rty z3_ctx env expr =
       let (_,env) = Env.enter_value "v" val_desc env in
       let phi = 
         Smtcheck.convert_phi z3_ctx (Ocaml_typecheck.process_expr env phi)
-      in 
+      in
+      let v = Smtcheck.create_var z3_ctx "var_v" base_ty in
+      let x = Smtcheck.create_var z3_ctx "v" base_ty in
+      let phi = Z3.Expr.substitute_one phi v x in
       RtyBase { base_ty ; phi }
   | _ -> failwith "die"
 

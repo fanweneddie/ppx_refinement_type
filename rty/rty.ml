@@ -26,8 +26,8 @@ let rec layout_rty = function
 
 module Builtin = struct
   let plus (ctx: Z3.context): rty = 
-    let x = Arithmetic.Integer.mk_const_s ctx "x" in
-    let y = Arithmetic.Integer.mk_const_s ctx "y" in
+    let x = Arithmetic.Integer.mk_const_s ctx "var_x" in
+    let y = Arithmetic.Integer.mk_const_s ctx "var_y" in
     let v = Arithmetic.Integer.mk_const_s ctx "v" in
     let phi' = Boolean.mk_eq ctx v (Arithmetic.mk_add ctx [x; y]) in
     RtyArrow {
