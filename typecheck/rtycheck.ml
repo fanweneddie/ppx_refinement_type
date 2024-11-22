@@ -45,20 +45,23 @@ let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
       | RtyArrow (_) -> pred)
     pred ctx.rty
 
-let check_subtype (env: Env.t) (ctx: full_ctx) (ty': rty) (ty: rty) =
+let check_subtype (env: Env.t) (ctx: full_ctx) (ty': string * rty) (ty: string * rty) =
   match ty', ty with
-  | RtyBase{base_ty = bty1; phi = phi1}, RtyBase{base_ty = bty2; phi = phi2} 
+  | (name1, RtyBase{base_ty = bty1; phi = phi1}), (name2, RtyBase{base_ty = bty2; phi = phi2})
     when unify_base_type env bty1 bty2 ->
+      let v = Smtcheck.create_var ctx.z3 name2 bty1 in
+      let x = Smtcheck.create_var ctx.z3 name1 bty2 in
+      let phi2 = Expr.substitute_one phi2 v x in
       let c = entailment ctx (Boolean.mk_implies ctx.z3 phi1 phi2) in
       Smtcheck.check ctx.z3 c
   | _ -> failwith "NI CHECK_SUBTYPE"
 
 let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   match e.exp_desc with
-  | Texp_ident (path, _, _) ->
+  | Texp_ident (path, _, value_desc) ->
     let name = Path.name path in
     (match ctx_lookup ctx.rty name with
-    | None -> failwith "Need to implement function that converts type_expr to Rty"
+    | None -> RtyBase { base_ty = value_desc.val_type; phi = Boolean.mk_true ctx.z3 }
     | Some (_, ty) -> ty)
   | Texp_constant(value) ->
       let sort = Smtcheck.convert_type ctx.z3 e.exp_type in
@@ -137,19 +140,21 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
 
 and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   match e.exp_desc with
-  | Texp_ident (path, _, value_desc) ->
+  | Texp_ident (path, _, _) ->
+      print_endline "YABO";
       let name = Path.name path in
+      print_endline name;
       let ty' = 
         (match ctx_lookup ctx.rty name with
-        | None -> RtyBase{base_ty=value_desc.val_type; phi=Boolean.mk_true ctx.z3}
+        | None -> type_infer ctx e
         | Some (_, ty') -> ty')
       in
       (* Check if this is correct *)
-      check_subtype e.exp_env ctx ty' ty
+      check_subtype e.exp_env ctx ("var_"^name, ty') ("v", ty)
   | Texp_apply(_)
   | Texp_constant(_) ->
     let ty' = type_infer ctx e in
-    check_subtype e.exp_env ctx ty' ty
+    check_subtype e.exp_env ctx ("v", ty') ("v", ty)
   | Texp_function {param; cases = [{c_rhs; _}]; _} ->
     (match ty with
     | RtyBase (_) -> failwith "Type error: Function being analyzed with RtyBase type"
@@ -178,29 +183,20 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     (match cstr_name with
     | ("true" | "false") ->
       let ty' = type_infer ctx e in
-      check_subtype e.exp_env ctx ty' ty
+      check_subtype e.exp_env ctx ("v", ty') ("v", ty)
     | _ -> failwith "Other constructors not supported")
-  | Texp_ifthenelse(if_expr, then_expr, else_expr_option) ->
-    (match else_expr_option with
-    | None -> failwith "else expression shouldn't be empty"
-    | Some else_expr ->
-      (* this name cannot be the variable name in valid OCaml, so it is fresh *)
-      let y_free_name = "-y_free" in
-      (* type check Gamma |- x <= bool *)
-      let bool_ty = RtyBase {base_ty = Predef.type_bool; phi = Boolean.mk_true ctx.z3} in
-      type_check ctx if_expr bool_ty;
-      (* type check Gamma; y:{int:x} |- e1 <= t for the then expression *)
-      let if_expr_pos_z3 = Smtcheck.transl_expr ctx.z3 if_expr in
-      let if_expr_pos_rty = RtyBase {base_ty = Predef.type_int; phi = if_expr_pos_z3} in
-      let new_rty_ctx_then = (y_free_name, if_expr_pos_rty)::ctx.rty in
-      let new_ctx_then = {z3 = ctx.z3; rty = new_rty_ctx_then} in
-      type_check new_ctx_then then_expr ty;
-      (* type check Gamma; y:{int:!x} |- e1 <= t for the else expression *)
-      let if_expr_neg_z3 = Boolean.mk_not ctx.z3 if_expr_pos_z3 in
-      let if_expr_neg_rty = RtyBase {base_ty = Predef.type_int; phi = if_expr_neg_z3} in
-      let new_rty_ctx_else = (y_free_name, if_expr_neg_rty)::ctx.rty in
-      let new_ctx_else = {z3 = ctx.z3; rty = new_rty_ctx_else} in
-      type_check new_ctx_else else_expr ty;)
+  | Texp_ifthenelse(b, e1, e2o) ->
+    let b_z3 = Smtcheck.transl_expr ctx.z3 b in
+    let ty1 = RtyBase {base_ty = Predef.type_int; phi = b_z3} in
+    let new_ctx1 = {z3 = ctx.z3; rty = ("", ty1)::ctx.rty} in
+    type_check new_ctx1 e1 ty;
+    (match e2o with
+    | None -> ()
+    | Some e2 -> 
+      let neg_b_z3 = Boolean.mk_not ctx.z3 b_z3 in
+      let ty2 = RtyBase{base_ty = Predef.type_int; phi = neg_b_z3} in
+      let new_ctx2 = {z3 = ctx.z3; rty = ("", ty2)::ctx.rty} in
+      type_check new_ctx2 e2 ty)
   | Texp_variant(_)
   | Texp_record(_)
   | Texp_field(_)
