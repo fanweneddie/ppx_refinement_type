@@ -141,9 +141,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
 and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   match e.exp_desc with
   | Texp_ident (path, _, _) ->
-      print_endline "YABO";
       let name = Path.name path in
-      print_endline name;
       let ty' = 
         (match ctx_lookup ctx.rty name with
         | None -> type_infer ctx e
