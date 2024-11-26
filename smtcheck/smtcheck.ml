@@ -35,7 +35,7 @@ let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
       | Texp_ident (_, {txt=Longident.Lident op; _}, _) -> op
       | _ -> failwith "Unsupported operator expression"
     in
-    let args = 
+    let args_z3 = 
       List.filter_map 
         (fun (_, arg) ->
           match arg with
@@ -43,7 +43,7 @@ let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
           | Some arg -> Some (transl_expr ctx arg)) 
         args 
     in
-    match op, args with 
+    match op, args_z3 with 
     | "-", [arg] -> Arithmetic.mk_unary_minus ctx arg
     | "not", [arg] -> Boolean.mk_not ctx arg
     | "=", [lhs; rhs] -> Boolean.mk_eq ctx lhs rhs
@@ -52,12 +52,23 @@ let rec transl_expr (ctx: Z3.context) (e: expression): Z3.Expr.expr =
     | ">", [lhs; rhs] -> Arithmetic.mk_gt ctx lhs rhs
     | "<=", [lhs; rhs] -> Arithmetic.mk_le ctx lhs rhs
     | ">=", [lhs; rhs] -> Arithmetic.mk_ge ctx lhs rhs
-    | "+", _ -> Arithmetic.mk_add ctx args
-    | "-", _ -> Arithmetic.mk_sub ctx args
-    | "*", _ -> Arithmetic.mk_mul ctx args
-    | "&&", _ -> Boolean.mk_and ctx args
-    | "||", _ -> Boolean.mk_or ctx args
-    | _ -> failwith "Unsupported operator")
+    | "+", _ -> Arithmetic.mk_add ctx args_z3
+    | "-", _ -> Arithmetic.mk_sub ctx args_z3
+    | "*", _ -> Arithmetic.mk_mul ctx args_z3
+    | "&&", _ -> Boolean.mk_and ctx args_z3
+    | "||", _ -> Boolean.mk_or ctx args_z3
+    | _ ->
+      let arg_sorts = 
+        List.filter_map 
+          (fun (_, arg) -> 
+            match arg with
+            | None -> failwith "transl_expr: Labelled partial application not supported"
+            | Some arg -> Some (convert_type ctx arg.exp_type)) 
+          args 
+      in
+      let ret_sort = convert_type ctx e.exp_type in
+      let f = FuncDecl.mk_func_decl_s ctx op arg_sorts ret_sort in
+      FuncDecl.apply f args_z3) 
   | Texp_construct (_, {cstr_name; _}, _) ->
     (match cstr_name with
     | "true" -> Boolean.mk_true ctx

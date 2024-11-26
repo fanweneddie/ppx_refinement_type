@@ -1,6 +1,6 @@
 (*open Stdlib*)
 
-let[@rty] foo = (v > 0 : int);;
+(*let[@rty] foo = (v > 0 : int);;
 
 let[@rty] bar = (v > 3 : int);;
 
@@ -30,4 +30,15 @@ let[@rty] bar2 =
 
 let bar2 x = if x > 0 then x else 1 - x;;
 
-bar2 2;;
+bar2 2;;*)
+
+let[@rty] rec fact =
+  let n = (v >= 0: int) in (v >= 1: int);;
+  
+let rec fact n = 
+  if n = 0 then
+    1
+  else
+    n + fact(n - 1);;
+
+fact 5;;

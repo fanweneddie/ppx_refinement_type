@@ -164,7 +164,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
       else
         failwith (Printf.sprintf "name mismatch for parameter %s and argument %s\n" 
           (Ident.name param) (Z3.Expr.to_string arg_name)))
-  | Texp_let(Nonrecursive, [vb], expr) ->
+  | Texp_let(_, [vb], expr) ->
     let rty1 = type_infer ctx vb.vb_expr in
     (match vb.vb_pat.pat_desc with
     | Tpat_var(ident, _) ->
