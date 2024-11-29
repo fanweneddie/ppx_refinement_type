@@ -33,7 +33,7 @@ let bar2 x = if x > 0 then x else 1 - x;;
 
 bar2 2;; *)
 
-let[@rty] rec fact =
+(*let[@rty] rec fact =
   let n = (v >= 0: int) in (v >= 1: int);;
   
 let rec fact n = 
@@ -46,4 +46,13 @@ fact(5);;
 
 let [@rty] res = (v >= 1: int);;
 let res = fact(5);;
-res;;
+res;;*)
+
+let [@rty] func1 =
+  let x = (v >= 0: int) in (v >= 1: int);;
+
+let func2 x = let y = x in y + 1;;
+
+let func1 x = func2 x;;
+
+func1 4

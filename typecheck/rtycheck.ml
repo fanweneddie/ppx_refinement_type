@@ -7,10 +7,13 @@ type full_ctx = { z3: Z3.context; rty: rty_ctx }
 let ctx_lookup (ctx: rty_ctx) (ident: string): (string * rty) option =
   List.find_opt (fun (name, _) -> String.equal name ident) ctx 
 
-let ctx_pat_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
+let get_pat_str (pat: Typedtree.pattern): string =
   match pat.pat_desc with
-  | Tpat_var(_, {txt=pat_name; _}) -> ctx_lookup ctx pat_name
-  | _ -> None
+  | Tpat_var(_, {txt; _}) -> txt
+  | _ -> "--"
+
+let ctx_pat_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
+  ctx_lookup ctx @@ get_pat_str pat
 
 let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): bool =
   try 
@@ -32,7 +35,7 @@ let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
       let ret_rty = subst arg_rty name expr in
       RtyArrow {arg_name; arg_rty; ret_rty}
 
-let rec add_assumption (ctx: Z3.context) (ty: rty) (ex: Expr.expr): rty =
+(* let rec add_assumption (ctx: Z3.context) (ty: rty) (ex: Expr.expr): rty =
   match ty with
   | RtyBase {base_ty; phi} ->
     let phi = Boolean.mk_and ctx [phi; ex] in
@@ -40,7 +43,7 @@ let rec add_assumption (ctx: Z3.context) (ty: rty) (ex: Expr.expr): rty =
   | RtyArrow {arg_name; arg_rty; ret_rty} ->
     let arg_rty = add_assumption ctx arg_rty ex in
     let ret_rty = add_assumption ctx ret_rty ex in
-    RtyArrow {arg_name; arg_rty; ret_rty}
+    RtyArrow {arg_name; arg_rty; ret_rty} *)
 
 (* use arg_name to replace it with v *)
 let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
@@ -82,20 +85,27 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
             (Expr.mk_const_s ctx.z3 "v" sort) 
             (Smtcheck.convert_constant ctx.z3 value)
         }
-  | Texp_let(_) -> failwith "NI TYPE_INFER for Texp_let"
-  | Texp_function(_) -> failwith "Temporary" 
+  | Texp_let(_, [vb], expr) -> 
+    let rty1 = type_infer ctx vb.vb_expr in
+    (match vb.vb_pat.pat_desc with
+    | Tpat_var(ident, _) ->
+      let name = Ident.name ident in
+      let new_ctx = {z3 = ctx.z3; rty = (name, rty1)::ctx.rty} in
+      type_infer new_ctx expr
+    | _ -> failwith "type_infer: other cases in let pat")
+  | Texp_let(_) -> failwith "Mutual recursion not supported"
+  | Texp_function{param; cases = [{c_rhs; _}]; _} -> 
+    (match Types.get_desc e.exp_type with
+    | Tarrow (_, arg_ty, _, _) ->
+      let arg_name = Smtcheck.create_var ctx.z3 (Ident.name param) arg_ty in
+      let arg_rty = RtyBase {base_ty = arg_ty; phi = Boolean.mk_true ctx.z3} in
+      let ret_rty = type_infer ctx c_rhs in
+      RtyArrow {arg_name; arg_rty; ret_rty}
+    | _ -> failwith "OCaml type of function is not arrow")
+  | Texp_function(_) -> failwith "keyword function not supported"
   | Texp_apply(op, args) ->
     (* Note: what if op does not have a refinement type? See Texp_ident*)
-    (* let op_str: string = 
-      match (op.exp_desc) with 
-      | Texp_ident (_, {txt=Longident.Lident a; _}, _) -> a
-      | _ -> failwith "Unsupported operator expression"
-    in
-    print_endline ("CURRENT OPERATOR = " ^ op_str); 
-    List.iter (fun (name, rty) -> print_endline(name ^ " = " ^ layout_rty rty)) ctx.rty; *)
-    let ty = type_infer ctx op in 
-    (* print_endline ("TY = " ^ layout_rty ty);
-    print_endline "====================================================="; *)
+    let ty = type_infer ctx op in
     let arg_exprs = 
       List.map 
         (fun arg -> 
@@ -104,7 +114,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
           | _ -> failwith "Labelled partial ap not supported")
         args
     in
-    let (arg_names, arg_types, final_ty) = 
+    let (arg_names, _arg_types, final_ty) = 
       List.fold_left 
         (fun (l1, l2, arg_rty) arg ->
           match arg_rty with
@@ -118,7 +128,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
       List.map (fun arg -> Smtcheck.transl_expr ctx.z3 arg) arg_exprs
     in
     (* hack for recursion *)
-    let assumptions = 
+    (*let assumptions = 
       List.fold_left2 
         (fun l expr ty ->
           match ty with
@@ -129,13 +139,14 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
           | _ -> l)
         [] arg_z3_exprs arg_types
     in
-    let extra = Boolean.mk_and ctx.z3 assumptions in
+    let extra = Boolean.mk_and ctx.z3 assumptions in *)
     let final_ty = 
       List.fold_left2
         (fun ty arg_name arg_expr -> subst ty arg_name arg_expr)
         final_ty arg_names arg_z3_exprs
     in
-    add_assumption ctx.z3 final_ty extra
+    final_ty
+    (*add_assumption ctx.z3 final_ty extra *)
   | Texp_match(_)
   | Texp_try(_)
   | Texp_tuple(_)
@@ -174,7 +185,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   | Texp_extension_constructor(_)
   | Texp_open(_) -> failwith "NI TYPE_INFER_2"
 
-and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): rty =
+and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   match e.exp_desc with
   | Texp_ident (path, _, _) ->
       let name = Path.name path in
@@ -184,11 +195,11 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): rty =
         | Some (_, ty') -> ty')
       in
       (* Check if this is correct *)
-      check_subtype e.exp_env ctx ("var_"^name, ty') ("v", ty); ty'
+      check_subtype e.exp_env ctx ("var_"^name, ty') ("v", ty)
   | Texp_apply(_)
   | Texp_constant(_) ->
     let ty' = type_infer ctx e in
-    check_subtype e.exp_env ctx ("v", ty') ("v", ty); ty'
+    check_subtype e.exp_env ctx ("v", ty') ("v", ty)
   | Texp_function {param; cases = [{c_rhs; _}]; _} ->
     (match ty with
     | RtyBase (_) -> failwith "Type error: Function being analyzed with RtyBase type"
@@ -196,7 +207,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): rty =
       (* check that arg_name is a Z3 variable which has the same name as name *)
       if String.equal (Z3.Expr.to_string arg_name) (Ident.name param) then
         let new_ctx = {z3 = ctx.z3; rty = (Ident.name param, arg_rty)::ctx.rty} in
-        ignore (type_check new_ctx c_rhs ret_rty); ty
+        type_check new_ctx c_rhs ret_rty
       else
         failwith (Printf.sprintf "name mismatch for parameter %s and argument %s\n" 
           (Ident.name param) (Z3.Expr.to_string arg_name)))
@@ -206,7 +217,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): rty =
     | Tpat_var(ident, _) ->
       let name = Ident.name ident in
       let new_ctx = {z3 = ctx.z3; rty = (name, rty1)::ctx.rty} in
-      ignore (type_check new_ctx expr ty); ty
+      type_check new_ctx expr ty
     | _ -> failwith "other cases in let pat")
   | Texp_function(_)
   | Texp_let(_)
@@ -217,21 +228,20 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): rty =
     (match cstr_name with
     | ("true" | "false") ->
       let ty' = type_infer ctx e in
-      check_subtype e.exp_env ctx ("v", ty') ("v", ty); ty'
+      check_subtype e.exp_env ctx ("v", ty') ("v", ty)
     | _ -> failwith "Other constructors not supported")
   | Texp_ifthenelse(b, e1, e2o) ->
     let b_z3 = Smtcheck.transl_expr ctx.z3 b in
     let ty1 = RtyBase {base_ty = Predef.type_int; phi = b_z3} in
     let new_ctx1 = {z3 = ctx.z3; rty = ("", ty1)::ctx.rty} in
-    ignore (type_check new_ctx1 e1 ty);
+    type_check new_ctx1 e1 ty;
     (match e2o with
     | None -> ()
     | Some e2 -> 
       let neg_b_z3 = Boolean.mk_not ctx.z3 b_z3 in
       let ty2 = RtyBase{base_ty = Predef.type_int; phi = neg_b_z3} in
       let new_ctx2 = {z3 = ctx.z3; rty = ("", ty2)::ctx.rty} in
-      ignore (type_check new_ctx2 e2 ty));
-    ty
+      type_check new_ctx2 e2 ty)
   | Texp_variant(_)
   | Texp_record(_)
   | Texp_field(_)
@@ -256,24 +266,25 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): rty =
   | Texp_extension_constructor(_)
   | Texp_open(_) -> failwith "NI TYPE_CHECK 2"
 
-let type_infer_item (ctx: full_ctx) (item: Typedtree.structure_item) : rty_exp option =
+let type_infer_item (ctx: full_ctx) (item: Typedtree.structure_item) : full_ctx =
   match item.str_desc with
-  | Tstr_eval (e, _) ->  Some (e, type_infer ctx e) 
+  | Tstr_eval (e, _) -> let _ = type_infer ctx e in ctx
   | Tstr_value (_, [vb]) ->
     (* Fix: get ctx.rty up to pat *)
-    (* print_endline (Pprintast.string_of_expression
-              @@ Ocaml_common.Untypeast.untype_expression vb.vb_expr); *)
     (let pty = ctx_pat_lookup ctx.rty vb.vb_pat in
     match pty with
-    | None -> None
-    | Some (_, ty) -> ignore (type_check ctx vb.vb_expr ty); None)
-  | _ -> None
+    | None -> 
+      let rty = type_infer ctx vb.vb_expr in
+      let name = get_pat_str vb.vb_pat in
+      {z3 = ctx.z3; rty = (name, rty)::ctx.rty}
+    | Some (_, ty) -> type_check ctx vb.vb_expr ty; ctx)
+  | _ -> ctx
 
 let bidirect_type_infer 
   (z3_ctx: Z3.context) 
   (rctx: rty_ctx) 
   (struc: Typedtree.structure) 
-  (_ty: rty option) : rty_exp_list =
-    List.filter_map
-    (fun item -> type_infer_item { z3=z3_ctx; rty=rctx } item)
-    struc.str_items 
+  (_ty: rty option) : full_ctx =
+    List.fold_left
+      (fun ctx item -> type_infer_item ctx item)
+      {z3 = z3_ctx; rty = rctx} struc.str_items

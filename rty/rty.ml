@@ -110,5 +110,8 @@ module Builtin = struct
     } 
  
   let add_builtins (ctx: Z3.context) (rctx: rty_ctx): rty_ctx =
-    [("Stdlib.+", plus ctx); ("Stdlib.-", minus ctx); ("Stdlib.*", times ctx); ("Stdlib.=", equal ctx)] @ rctx
+    [("Stdlib.+", plus ctx); 
+    ("Stdlib.-", minus ctx); 
+    ("Stdlib.*", times ctx);
+    ("Stdlib.=", equal ctx)] @ rctx
 end
