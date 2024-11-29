@@ -4,6 +4,7 @@ open Ocaml_common
 open Rty_lib
 open Rty_lib.Rty
 open Typecheck
+open Anormal
 
 let attr_is_rty attribute = String.equal "rty" attribute.attr_name.txt
 
@@ -94,7 +95,8 @@ let impl struc =
   let implementation = Ocaml_typecheck.process_implementation_file struc in
 
   let z3_ctx = Z3.mk_context [] in
-  let env = implementation.structure.str_final_env in
+  let anormal_struc = normalize implementation.structure in
+  let env = anormal_struc.str_final_env in
   let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
@@ -105,7 +107,7 @@ let impl struc =
       rtys
   in
   let rtys_ctx = Rty.Builtin.add_builtins z3_ctx rtys_ctx in
-  let _ = Rtycheck.bidirect_type_infer z3_ctx rtys_ctx implementation.structure None in
+  let _ = Rtycheck.bidirect_type_infer z3_ctx rtys_ctx anormal_struc None in
   let () =
     List.iter
       (fun (name, rty) ->

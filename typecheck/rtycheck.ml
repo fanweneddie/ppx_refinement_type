@@ -86,7 +86,16 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   | Texp_function(_) -> failwith "Temporary" 
   | Texp_apply(op, args) ->
     (* Note: what if op does not have a refinement type? See Texp_ident*)
-    let ty = type_infer ctx op in
+    (* let op_str: string = 
+      match (op.exp_desc) with 
+      | Texp_ident (_, {txt=Longident.Lident a; _}, _) -> a
+      | _ -> failwith "Unsupported operator expression"
+    in
+    print_endline ("CURRENT OPERATOR = " ^ op_str); 
+    List.iter (fun (name, rty) -> print_endline(name ^ " = " ^ layout_rty rty)) ctx.rty; *)
+    let ty = type_infer ctx op in 
+    (* print_endline ("TY = " ^ layout_rty ty);
+    print_endline "====================================================="; *)
     let arg_exprs = 
       List.map 
         (fun arg -> 
@@ -252,6 +261,8 @@ let type_infer_item (ctx: full_ctx) (item: Typedtree.structure_item) : rty_exp o
   | Tstr_eval (e, _) ->  Some (e, type_infer ctx e) 
   | Tstr_value (_, [vb]) ->
     (* Fix: get ctx.rty up to pat *)
+    (* print_endline (Pprintast.string_of_expression
+              @@ Ocaml_common.Untypeast.untype_expression vb.vb_expr); *)
     (let pty = ctx_pat_lookup ctx.rty vb.vb_pat in
     match pty with
     | None -> None
