@@ -12,7 +12,12 @@ let base_cont = fun (e: Typedtree.expression) -> e
 
 let isValue (e: Typedtree.expression): bool =
   match e.exp_desc with
-  | Texp_ident(_) | Texp_constant(_) -> true
+  | Texp_ident(_) 
+  | Texp_constant(_) -> true
+  | Texp_construct(_, {cstr_name; _}, _) ->
+    (match cstr_name with
+    | ("true" | "false") -> true
+    | _ -> false)
   | _ -> false
 
 let rec normalize_name (e: Typedtree.expression) (k: cont): Typedtree.expression = 
@@ -79,7 +84,12 @@ and normalize_names (es : Typedtree.expression list) (k: conts) =
 
 and normalize_exp (e : Typedtree.expression) (k: cont): Typedtree.expression =
   match e.exp_desc with
-  | Texp_ident(_) | Texp_constant(_) -> k e
+  | Texp_ident(_) 
+  | Texp_constant(_) -> k e
+  | Texp_construct(_, {cstr_name; _}, _) ->
+    (match cstr_name with
+    | ("true" | "false") -> k e
+    | _ -> e) 
   | Texp_let(flag, [vb], expr) ->
     normalize_exp vb.vb_expr ( fun anf_rhs ->
       let new_vb = {vb with vb_expr = anf_rhs} in

@@ -108,10 +108,32 @@ module Builtin = struct
         }
       }
     } 
+  
+  let gt (ctx: Z3.context): rty =
+    let x = Arithmetic.Integer.mk_const_s ctx "var_x" in 
+    let y = Arithmetic.Integer.mk_const_s ctx "var_y" in
+    let v = Boolean.mk_const_s ctx "v" in
+    let phi' = Boolean.mk_eq ctx v (Arithmetic.mk_gt ctx x y) in
+    RtyArrow {
+      arg_name = x;
+      arg_rty = RtyBase {
+        base_ty = Predef.type_int; phi = Boolean.mk_true ctx
+      };
+      ret_rty = RtyArrow {
+        arg_name = y;
+        arg_rty = RtyBase {
+          base_ty = Predef.type_int; phi = Boolean.mk_true ctx
+        };
+        ret_rty = RtyBase {
+          base_ty = Predef.type_bool; phi = phi'
+        }
+      }
+    } 
  
   let add_builtins (ctx: Z3.context) (rctx: rty_ctx): rty_ctx =
     [("Stdlib.+", plus ctx); 
     ("Stdlib.-", minus ctx); 
     ("Stdlib.*", times ctx);
-    ("Stdlib.=", equal ctx)] @ rctx
+    ("Stdlib.=", equal ctx);
+    ("Stdlib.>", gt ctx)] @ rctx
 end
