@@ -26,12 +26,12 @@ let bar1 = if true then 1 else 0;;
 bar1;;*)
 
 
-let[@rty] bar2 = 
+(*let[@rty] bar2 = 
   let x = (true: int) in (v > 0: int);;
 
 let bar2 x = if x > 0 then x else 1 - x;;
 
-bar2 2;;
+bar2 2;; *)
 
 (*let[@rty] rec fact =
   let n = (v >= 0: int) in (v >= 1: int);;
@@ -48,11 +48,13 @@ fact(5);; *)
 let res = fact(5);;
 res;;*)
 
-(*let [@rty] func1 =
+let rec fact n = n * fact (n-1);;
+
+let [@rty] func1 =
   let x = (v >= 0: int) in (v >= 1: int);;
 
-let func2 x = let y = x in y + 1;;
+(* let func2 x = let y = x in y + 1;;*)
 
-let func1 x = func2 x;;
+let func1 x = fact x;;
 
-func1 4 *)
+func1 4
