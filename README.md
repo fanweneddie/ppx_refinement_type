@@ -28,4 +28,18 @@ This will type check the program located in `test/rewriter/frontend.ml`.
 
 # Testing
 
-In test/testcases, we have a couple of test files (e.g., test_func_1.ml) that end with "(\* pass \*)" or "(\* fail \*)". If it ends with "(\* fail \*)", then we check whether "Fatal error: exception Failure" is in the output&error when running `dune build`. The script test.py in root directory does this checking by copying the test files into frontend and checking the output&error in the run.
+In test/testcases, we have a couple of test files (e.g., test_func_1.ml) that end with "(\* pass \*)" or "(\* fail \*)". If it ends with "(\* fail \*)", then we check whether "Fatal error: exception Failure" is in the output&error when running `dune build`. 
+
+For example, test_func_1.ml should pass the type check.
+
+``` OCaml
+(* zero *)
+let[@rty] zero = (v = 0 : int);;
+
+let zero = 0;;
+
+zero;;
+(* pass *)
+```
+
+The script test.py in root directory does this checking by copying the test files into test/rewriter/frontend.ml and checking the output&error in the run.
