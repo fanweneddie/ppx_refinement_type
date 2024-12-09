@@ -1,7 +1,7 @@
 (* natural numbers *)
-let[@rty] nat = 
+let[@rty] num = 
   (v >= 0 : int);;
 
-let nat = 5;;
-nat;;
+let num = 5;;
+num;;
 (* pass *)
