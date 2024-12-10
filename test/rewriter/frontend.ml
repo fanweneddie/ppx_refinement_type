@@ -48,13 +48,12 @@ let [@rty] res = (v >= 1: int);;
 let res = fact 5;;
 res;;
 
-(*let rec fact n = n * fact (n-1);;
 
 let [@rty] func1 =
-  let x = (v >= 0: int) in (v >= 1: int);;*)
+  let x = (v >= 0: int) in (v >= 1: int);;
 
-(* let func2 x = let y = x in y + 1;;*)
+let func2 x = let y = x in y + 1;;
 
-(* let func1 x = fact x;;
+let func1 x = func2 x;;
 
-func1 4 *)
+func1 4
