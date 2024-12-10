@@ -81,7 +81,7 @@ let convert_phi (ctx: context) (phi: expression): Z3.Expr.expr =
   transl_expr ctx phi
 
 let check (ctx: Z3.context) (c: Expr.expr) : unit =
-  print_endline (Expr.to_string c);
+  (* print_endline (Expr.to_string c); *)
   let solver = Z3.Solver.mk_solver ctx None in 
   let subtype_expr = Boolean.mk_not ctx c in
   let _ = Solver.add solver [subtype_expr] in 
