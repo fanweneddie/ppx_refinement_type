@@ -9,11 +9,15 @@ let ctx_lookup (ctx: rty_ctx) (ident: string): (string * rty) option =
 
 let get_pat_str (pat: Typedtree.pattern): string =
   match pat.pat_desc with
-  | Tpat_var(_, {txt; _}) -> txt
+  | Tpat_var(ident, _) -> Ident.name ident
   | _ -> "--"
 
-let ctx_pat_lookup (ctx: rty_ctx) (pat: Typedtree.pattern): (string * rty) option =
-  ctx_lookup ctx @@ get_pat_str pat
+let ctx_pat_lookup 
+  (ctx: rty_ctx) 
+  (prefix: string) 
+  (pat: Typedtree.pattern): 
+    (string * rty) option =
+  ctx_lookup ctx @@ (prefix ^ get_pat_str pat)
 
 let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): bool =
   try 
@@ -266,25 +270,27 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_extension_constructor(_)
   | Texp_open(_) -> failwith "NI TYPE_CHECK 2"
 
-let type_infer_item (ctx: full_ctx) (item: Typedtree.structure_item) : full_ctx =
+(* type check or type infer the item given and give the updated ctx *)
+let type_item (ctx: full_ctx) (prefix: string) (item: Typedtree.structure_item) : full_ctx =
   match item.str_desc with
   | Tstr_eval (e, _) -> let _ = type_infer ctx e in ctx
   | Tstr_value (_, [vb]) ->
     (* Fix: get ctx.rty up to pat *)
-    (let pty = ctx_pat_lookup ctx.rty vb.vb_pat in
+    (let pty = ctx_pat_lookup ctx.rty prefix vb.vb_pat in
     match pty with
     | None -> 
       let rty = type_infer ctx vb.vb_expr in
       let name = get_pat_str vb.vb_pat in
-      {z3 = ctx.z3; rty = (name, rty)::ctx.rty}
+      {z3 = ctx.z3; rty = (prefix ^ name, rty)::ctx.rty}
     | Some (_, ty) -> type_check ctx vb.vb_expr ty; ctx)
   | _ -> ctx
 
 let bidirect_type_infer 
   (z3_ctx: Z3.context) 
-  (rctx: rty_ctx) 
+  (rctx: rty_ctx)
+  (prefix: string)
   (struc: Typedtree.structure) 
-  (_ty: rty option) : full_ctx =
+    : full_ctx =
     List.fold_left
-      (fun ctx item -> type_infer_item ctx item)
+      (fun ctx item -> type_item ctx prefix item)
       {z3 = z3_ctx; rty = rctx} struc.str_items

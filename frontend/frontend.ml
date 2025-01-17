@@ -4,9 +4,9 @@ open Ocaml_common
 open Rty_lib
 open Rty_lib.Rty
 open Typecheck
-open Anormal
 
 let attr_is_rty attribute = String.equal "rty" attribute.attr_name.txt
+let attr_is_axiom attribute = String.equal "axiom" attribute.attr_name.txt
 
 let item_is_rty item =
   match item.pstr_desc with
@@ -17,15 +17,61 @@ let item_is_rty item =
   | Pstr_value (_, _) -> false
   | _ -> false
 
+let item_mod_info pt_item =
+  let (item, ty_item): 
+    Parsetree.structure_item * Typedtree.structure_item 
+  = pt_item in
+  let pstruc = 
+    match item.pstr_desc with
+    | Pstr_module {pmb_name = {txt=Some name; _}; pmb_expr = {pmod_desc; _}; _} ->
+      (match pmod_desc with
+      | Pmod_structure struc -> Some (name, struc)
+      | _ -> None)
+    | _ -> None
+  in
+  let tstruc = 
+    match ty_item.str_desc with
+    | Tstr_module {mb_name = {txt=Some name; _}; mb_expr = {mod_desc; _}; _} ->
+      (match mod_desc with
+      | Tmod_structure struc -> Some (name, struc)
+      | _ -> None)
+    | _ -> None
+  in
+  match pstruc, tstruc with
+  | Some (n1, pstruc), Some (n2, tstruc) when n1 = n2 -> 
+    Some (n1, pstruc, tstruc)
+  | _ -> None
+
+let rec module_partition binding =
+  let pmod_desc = binding.pmb_expr.pmod_desc in
+  match pmod_desc with
+  | Pmod_structure struc ->
+    let str = partition_rty struc in
+    {binding with 
+      pmb_expr = 
+        {binding.pmb_expr with pmod_desc = Pmod_structure str}}
+  | _ -> binding
+
+and partition_rty items =
+  List.filter_map
+    (fun item ->
+      match item.pstr_desc with
+      | Pstr_module binding ->
+        let binding' = module_partition binding in
+        Some ({item with pstr_desc = Pstr_module binding'})
+      | _ when item_is_rty item -> None
+      | _ -> Some item)
+    items
+
 let rec rty_to_type_expr (rty: rty): Types.type_expr =
   match rty with
   | RtyBase { base_ty; _ } -> base_ty
   | RtyArrow { arg_rty; ret_rty; _ } ->
-      let arg_ty = rty_to_type_expr arg_rty in
-      let ret_ty = rty_to_type_expr ret_rty in
-      Types.create_expr 
-        (Tarrow (Nolabel, arg_ty, ret_ty, Types.commu_ok))
-        ~level:0 ~scope:0 ~id:0
+    let arg_ty = rty_to_type_expr arg_rty in
+    let ret_ty = rty_to_type_expr ret_rty in
+    Types.create_expr 
+      (Tarrow (Nolabel, arg_ty, ret_ty, Types.commu_ok))
+      ~level:0 ~scope:0 ~id:0
 
 let pat_var_name pat = 
   match pat.ppat_desc with
@@ -71,11 +117,11 @@ let rec parse_rty z3_ctx env expr =
       RtyBase { base_ty ; phi }
   | _ -> failwith "die"
 
-let parse_rty_binding z3_ctx env value_binding =
-  (pat_var_name value_binding.pvb_pat, 
+let parse_rty_binding z3_ctx env prefix value_binding =
+  (prefix ^ pat_var_name value_binding.pvb_pat, 
     parse_rty z3_ctx env value_binding.pvb_expr)
 
-let get_impl_from_typed_items name implementation =
+let get_impl_from_typed_items name prefix struc =
   let open Ocaml_common.Typedtree in
   List.find_map
     (fun str ->
@@ -84,34 +130,53 @@ let get_impl_from_typed_items name implementation =
           let pat =
             Ocaml_common.Untypeast.untype_pattern value_binding.vb_pat
           in
-          if String.equal (Ocaml_helper.string_of_pattern pat) name then
+          if String.equal (prefix ^ Ocaml_helper.string_of_pattern pat) name then
             Some value_binding.vb_expr
           else None
       | _ -> None)
-    implementation.structure.str_items
+    struc.str_items
 
-let impl struc =
+let rec type_struc 
+  (z3_ctx: Z3.context) 
+  (top_ctx: rty_ctx) 
+  (path: string list)
+  (struc: Parsetree.structure) 
+  (ty_struc: Typedtree.structure) =
   let rtys, struc = List.partition item_is_rty struc in
-  let implementation = Ocaml_typecheck.process_implementation_file struc in
+  
+  let ty_items = ty_struc.str_items in
+  let pt_struc = List.map2 (fun x y -> (x,y)) struc ty_items in
+  let mod_info = List.filter_map item_mod_info pt_struc in
 
-  let z3_ctx = Z3.mk_context [] in
-  let anormal_struc = normalize implementation.structure in
-  let env = anormal_struc.str_final_env in
+  let prefix = List.fold_left (fun acc x -> acc ^ x ^ ".") "" path in
+  let env = ty_struc.str_final_env in
   let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
         match item.pstr_desc with
         | Pstr_value (_, [ value_binding ]) ->
-            Some (parse_rty_binding z3_ctx env value_binding)
+            Some (parse_rty_binding z3_ctx env prefix value_binding)
         | _ -> None)
       rtys
   in
-  let rtys_ctx = Rty.Builtin.add_builtins z3_ctx rtys_ctx in
-  let _ = Rtycheck.bidirect_type_infer z3_ctx rtys_ctx anormal_struc None in
+  (* There may be issue with names inside modules *)
+  (* Also order of the type declaration 
+    and implementation is not checked*)
+  let top_ctx = rtys_ctx @ top_ctx in
+  let module_ctx = 
+    List.fold_left 
+      (fun ctx (name, pstruc, tstruc) -> 
+        type_struc z3_ctx ctx (name::path) pstruc tstruc) 
+       top_ctx 
+       mod_info 
+  in
+  let anf_struc = Anormal.normalize ty_struc in
+  let ret_ctx = Rtycheck.bidirect_type_infer z3_ctx module_ctx prefix anf_struc in
+  
   let () =
     List.iter
       (fun (name, rty) ->
-        match get_impl_from_typed_items name implementation with
+        match get_impl_from_typed_items name prefix ty_struc with
         | None ->
             Printf.printf "cannot find the implementation of function %s\n"
               (name)
@@ -123,7 +188,17 @@ let impl struc =
               (Rty.layout_rty rty))
       rtys_ctx
   in
-  struc
+  ret_ctx.rty
+
+let impl struc =
+  let ret_struc = partition_rty struc in
+  let implementation = Ocaml_typecheck.process_implementation_file ret_struc in
+  let ty_struc = implementation.structure in
+  
+  let z3_ctx = Z3.mk_context [] in
+  let builtin_ctx = Rty.Builtin.add_builtins z3_ctx [] in
+  let _ = type_struc z3_ctx builtin_ctx [] struc ty_struc in
+  ret_struc
 
 let intf intf = intf
 let () = Driver.register_transformation ~impl ~intf "refinement type"

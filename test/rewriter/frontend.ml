@@ -1,17 +1,19 @@
 (*open Stdlib*)
 
-let[@rty] foo = (v > 0 : int);;
+let[@rty] t = (v > 3: int);;
 
-let[@rty] bar = (v > 3 : int);;
+(*let[@rty] foo = (v > 0: int);;*)
+
+(*let[@rty] bar = (v > 3 : int);;
 
 let[@rty] baz = 
   let x = (v >= 1: int) in 
   let y = (v >= 1: int) in
-  (v >= 2: int)
+  (v >= 2: int) *)
 
-let foo = (let x = 40 in x);;
+(*let foo = (let x = 40 in x);;*)
 
-let bar = 52 + (-48);;
+(*let bar = 52 + (-48);;
 
 let baz x y = x + y;;
 
@@ -23,10 +25,17 @@ let[@rty] bar1 = (v > 0 : int);;
 
 let bar1 = if true then 1 else 0;;
 
-bar1;;
+bar1;;*)
 
+module Example = struct
+  let[@rty] foo = (v > 1 : int);;
+  let foo = 2;;
+end
 
-let[@rty] bar2 = 
+let t = Example.foo + 2;;
+t
+
+(*let[@rty] bar2 = 
   let x = (true: int) in (v > 0: int);;
 
 let bar2 x = if x > 0 then x else 1 - x;;
@@ -56,4 +65,4 @@ let func2 x = let y = x in y + 1;;
 
 let func1 x = func2 x;;
 
-func1 4
+func1 4*)
