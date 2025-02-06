@@ -2,7 +2,8 @@ open Ocaml_common
 open Rty_lib.Rty
 open Z3
 
-type full_ctx = { z3: Z3.context; rty: rty_ctx }
+type full_ctx = { z3: Z3.context; rty: rty_ctx; curr: rty_ctx }
+type ret_ctx = {z3: Z3.context; rty: rty_ctx}
 
 let ctx_lookup (ctx: rty_ctx) (ident: string): (string * rty) option =
   List.find_opt (fun (name, _) -> String.equal name ident) ctx 
@@ -39,16 +40,6 @@ let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
       let ret_rty = subst arg_rty name expr in
       RtyArrow {arg_name; arg_rty; ret_rty}
 
-(* let rec add_assumption (ctx: Z3.context) (ty: rty) (ex: Expr.expr): rty =
-  match ty with
-  | RtyBase {base_ty; phi} ->
-    let phi = Boolean.mk_and ctx [phi; ex] in
-    RtyBase {base_ty; phi}
-  | RtyArrow {arg_name; arg_rty; ret_rty} ->
-    let arg_rty = add_assumption ctx arg_rty ex in
-    let ret_rty = add_assumption ctx ret_rty ex in
-    RtyArrow {arg_name; arg_rty; ret_rty} *)
-
 (* use arg_name to replace it with v *)
 let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
   List.fold_left
@@ -77,8 +68,9 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   match e.exp_desc with
   | Texp_ident (path, _, value_desc) ->
     let name = Path.name path in
-    (match ctx_lookup ctx.rty name with
-    | None -> RtyBase { base_ty = value_desc.val_type; phi = Boolean.mk_true ctx.z3 }
+    (match ctx_lookup (ctx.rty @ ctx.curr) name with
+    | None -> 
+      RtyBase { base_ty = value_desc.val_type; phi = Boolean.mk_true ctx.z3 }
     | Some (_, ty) -> ty)
   | Texp_constant(value) ->
       let sort = Smtcheck.convert_type ctx.z3 e.exp_type in
@@ -94,7 +86,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
     (match vb.vb_pat.pat_desc with
     | Tpat_var(ident, _) ->
       let name = Ident.name ident in
-      let new_ctx = {z3 = ctx.z3; rty = (name, rty1)::ctx.rty} in
+      let new_ctx = {ctx with rty = (name, rty1)::ctx.rty} in
       type_infer new_ctx expr
     | _ -> failwith "type_infer: other cases in let pat")
   | Texp_let(_) -> failwith "Mutual recursion not supported"
@@ -131,26 +123,12 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
     let arg_z3_exprs = 
       List.map (fun arg -> Smtcheck.transl_expr ctx.z3 arg) arg_exprs
     in
-    (* hack for recursion *)
-    (*let assumptions = 
-      List.fold_left2 
-        (fun l expr ty ->
-          match ty with
-          | RtyBase{base_ty; phi} -> 
-            let v = Smtcheck.create_var ctx.z3 "v" base_ty in
-            let phi = Expr.substitute_one phi v expr in 
-            l @ [phi]
-          | _ -> l)
-        [] arg_z3_exprs arg_types
-    in
-    let extra = Boolean.mk_and ctx.z3 assumptions in *)
     let final_ty = 
       List.fold_left2
         (fun ty arg_name arg_expr -> subst ty arg_name arg_expr)
         final_ty arg_names arg_z3_exprs
     in
     final_ty
-    (*add_assumption ctx.z3 final_ty extra *)
   | Texp_match(_)
   | Texp_try(_)
   | Texp_tuple(_)
@@ -194,7 +172,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_ident (path, _, _) ->
       let name = Path.name path in
       let ty' = 
-        (match ctx_lookup ctx.rty name with
+        (match ctx_lookup (ctx.rty @ ctx.curr) name with
         | None -> type_infer ctx e
         | Some (_, ty') -> ty')
       in
@@ -210,7 +188,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     | RtyArrow {arg_name; arg_rty; ret_rty;} -> 
       (* check that arg_name is a Z3 variable which has the same name as name *)
       if String.equal (Z3.Expr.to_string arg_name) (Ident.name param) then
-        let new_ctx = {z3 = ctx.z3; rty = (Ident.name param, arg_rty)::ctx.rty} in
+        let new_ctx = {ctx with rty = (Ident.name param, arg_rty)::ctx.rty} in
         type_check new_ctx c_rhs ret_rty
       else
         failwith (Printf.sprintf "name mismatch for parameter %s and argument %s\n" 
@@ -220,7 +198,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     (match vb.vb_pat.pat_desc with
     | Tpat_var(ident, _) ->
       let name = Ident.name ident in
-      let new_ctx = {z3 = ctx.z3; rty = (name, rty1)::ctx.rty} in
+      let new_ctx = {ctx with rty = (name, rty1)::ctx.rty} in
       type_check new_ctx expr ty
     | _ -> failwith "other cases in let pat")
   | Texp_function(_)
@@ -237,14 +215,14 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_ifthenelse(b, e1, e2o) ->
     let b_z3 = Smtcheck.transl_expr ctx.z3 b in
     let ty1 = RtyBase {base_ty = Predef.type_int; phi = b_z3} in
-    let new_ctx1 = {z3 = ctx.z3; rty = ("", ty1)::ctx.rty} in
+    let new_ctx1 = {ctx with rty = ("", ty1)::ctx.rty} in
     type_check new_ctx1 e1 ty;
     (match e2o with
     | None -> ()
     | Some e2 -> 
       let neg_b_z3 = Boolean.mk_not ctx.z3 b_z3 in
       let ty2 = RtyBase{base_ty = Predef.type_int; phi = neg_b_z3} in
-      let new_ctx2 = {z3 = ctx.z3; rty = ("", ty2)::ctx.rty} in
+      let new_ctx2 = {ctx with rty = ("", ty2)::ctx.rty} in
       type_check new_ctx2 e2 ty)
   | Texp_variant(_)
   | Texp_record(_)
@@ -276,21 +254,26 @@ let type_item (ctx: full_ctx) (prefix: string) (item: Typedtree.structure_item) 
   | Tstr_eval (e, _) -> let _ = type_infer ctx e in ctx
   | Tstr_value (_, [vb]) ->
     (* Fix: get ctx.rty up to pat *)
+    (* ctx.rty only *)
     (let pty = ctx_pat_lookup ctx.rty prefix vb.vb_pat in
     match pty with
-    | None -> 
+    | None ->
       let rty = type_infer ctx vb.vb_expr in
       let name = get_pat_str vb.vb_pat in
-      {z3 = ctx.z3; rty = (prefix ^ name, rty)::ctx.rty}
+      { ctx with curr = (name, rty)::ctx.curr }
+      (*{z3 = ctx.z3; rty = (prefix ^ name, rty)::ctx.rty}*)
     | Some (_, ty) -> type_check ctx vb.vb_expr ty; ctx)
   | _ -> ctx
 
-let bidirect_type_infer 
+let bidirect_type 
   (z3_ctx: Z3.context) 
   (rctx: rty_ctx)
   (prefix: string)
   (struc: Typedtree.structure) 
-    : full_ctx =
-    List.fold_left
+    : ret_ctx =
+    let fctx = List.fold_left
       (fun ctx item -> type_item ctx prefix item)
-      {z3 = z3_ctx; rty = rctx} struc.str_items
+      {z3 = z3_ctx; rty = rctx; curr = []} struc.str_items
+    in
+    let pref_curr = List.map (fun (name, ty) -> (prefix ^ name, ty)) fctx.curr in
+    {z3 = fctx.z3; rty = fctx.rty @ pref_curr}

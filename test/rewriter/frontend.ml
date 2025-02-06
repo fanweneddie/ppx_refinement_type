@@ -1,6 +1,6 @@
 (*open Stdlib*)
 
-let[@rty] t = (v > 3: int);;
+let[@rty] p = (v >= 1: int);;
 
 (*let[@rty] foo = (v > 0: int);;*)
 
@@ -29,12 +29,23 @@ bar1;;*)
 
 module Example = struct
   let[@rty] foo = (v > 1 : int);;
+  let[@rty] func1 =
+    let x = (v >= 0: int) in (v >= 1: int);;
+
   let foo = 2;;
+  let func2 x = let y = x in y + 1;;
+  let func1 x = func2 x;;
 end
 
-let t = Example.foo + 2;;
-t
+let p = Example.func1 Example.foo;;
 
+module PosEven = struct
+  type _t = int;;
+
+  let[@axiom] pos_even (n: _t): bool = 
+    (n > 0) && (n mod 2 = 0)
+end;;
+p
 (*let[@rty] bar2 = 
   let x = (true: int) in (v > 0: int);;
 
@@ -55,10 +66,10 @@ fact 5;;
 
 let [@rty] res = (v >= 1: int);;
 let res = fact 5;;
-res;;
+res;;*)
 
 
-let [@rty] func1 =
+(*let [@rty] func1 =
   let x = (v >= 0: int) in (v >= 1: int);;
 
 let func2 x = let y = x in y + 1;;
