@@ -12,7 +12,7 @@ let item_is_rty item =
   match item.pstr_desc with
   (* NOTE: omit rec_flag; refinement type cannot be recursive *)
   | Pstr_value (_, [ value_binding ]) ->
-      List.exists attr_is_rty value_binding.pvb_attributes
+    List.exists attr_is_rty value_binding.pvb_attributes
   (* NOTE: omit mutural recursion*)
   | Pstr_value (_, _) -> false
   | _ -> false
@@ -20,7 +20,7 @@ let item_is_rty item =
 let item_is_axiom item =
   match item.pstr_desc with
   | Pstr_value (_, [ value_binding ]) ->
-      List.exists attr_is_axiom value_binding.pvb_attributes
+    List.exists attr_is_axiom value_binding.pvb_attributes
   | Pstr_value (_, _) -> false
   | _ -> false
 
@@ -86,6 +86,11 @@ let pat_var_name pat =
   | Ppat_var {txt; _} -> txt
   | _ -> failwith "Not variable"
 
+let parse_pat_constr pat = 
+  match pat.ppat_desc with
+  | Ppat_constraint (pat, ty) -> (pat_var_name pat, ty)
+  | _ -> failwith "Not constraint"
+
 let pat_var_expr z3_ctx pat ty = 
   match pat.ppat_desc with
   | Ppat_var {txt; _} ->
@@ -125,18 +130,37 @@ let rec parse_rty z3_ctx env expr =
     RtyBase { base_ty ; phi }
   | _ -> failwith "nope rty"
 
-let parse_axiom _z3_ctx _env expr = 
+let rec parse_axiom z3_ctx env prefix expr = 
   match expr.pexp_desc with
+  | Pexp_constraint(phi, base_ty) ->
+    let base_ty = Ocaml_typecheck.process_type env base_ty in
+    let phi_ty = Ocaml_typecheck.process_expr env phi in
+    if Ocaml_helper.unify_base_type env base_ty Predef.type_bool then
+      Smtcheck.convert_phi z3_ctx phi_ty
+    else
+      failwith "axiom return type is not bool"
+  | Pexp_fun (_, _, arg, body) ->
+    let (name, tyc) = parse_pat_constr arg in
+    let ty = Ocaml_typecheck.process_type env tyc in
+    let val_desc = Ocaml_typecheck.create_val_desc ty in
+    let (_, new_env) = Env.enter_value name val_desc env in
+    let phi = parse_axiom z3_ctx new_env prefix body in
+    let sym = Z3.Symbol.mk_string z3_ctx name in
+    let sort = Z3.Sort.mk_uninterpreted_s z3_ctx prefix in
+    let ret = Z3.Quantifier.mk_forall z3_ctx [sort] [sym] phi None [] [] None None in
+    Z3.Quantifier.expr_of_quantifier ret
   | _ -> failwith "nope axiom"
 
 let parse_rty_binding z3_ctx env prefix value_binding =
   (prefix ^ pat_var_name value_binding.pvb_pat, 
     parse_rty z3_ctx env value_binding.pvb_expr)
 
-let parse_axiom_binding z3_ctx _env value_binding =
-  print_endline (Ocaml_helper.string_of_pattern value_binding.pvb_pat);
-  print_endline (Pprintast.string_of_expression value_binding.pvb_expr);
-  ("", Rty.Builtin.plus z3_ctx)
+let parse_axiom_binding z3_ctx env prefix value_binding =
+  (*print_endline (Ocaml_helper.string_of_pattern value_binding.pvb_pat);
+  print_endline (Pprintast.string_of_expression value_binding.pvb_expr);*)
+  let phi = parse_axiom z3_ctx env prefix value_binding.pvb_expr in
+  print_endline (Z3.Expr.to_string phi);
+  ("", RtyBase{ base_ty = Predef.type_int; phi})
 
 let get_impl_from_typed_items name prefix struc =
   let open Ocaml_common.Typedtree in
@@ -177,19 +201,19 @@ let rec type_struc
         | _ -> None)
       rtys
   in
-  let _axioms_ctx: rty_ctx =
+  let axioms_ctx: rty_ctx =
     List.filter_map
       (fun item ->
         match item.pstr_desc with
         | Pstr_value(_, [ value_binding ]) ->
-            Some (parse_axiom_binding z3_ctx env value_binding)
+            Some (parse_axiom_binding z3_ctx env prefix value_binding)
         | _ -> None)
       axioms
   in
   (* There may be issue with names inside modules *)
   (* Also order of the type declaration 
     and implementation is not checked*)
-  let top_ctx = rtys_ctx @ top_ctx in
+  let top_ctx = axioms_ctx @ rtys_ctx @ top_ctx in
   let module_ctx = 
     List.fold_left 
       (fun ctx (name, pstruc, tstruc) -> 

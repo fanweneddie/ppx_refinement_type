@@ -1,5 +1,6 @@
 open Ocaml_common
 open Rty_lib.Rty
+open Rty_lib.Ocaml_helper
 open Z3
 
 type full_ctx = { z3: Z3.context; rty: rty_ctx; curr: rty_ctx }
@@ -19,13 +20,6 @@ let ctx_pat_lookup
   (pat: Typedtree.pattern): 
     (string * rty) option =
   ctx_lookup ctx @@ (prefix ^ get_pat_str pat)
-
-let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): bool =
-  try 
-    Ctype.unify env ty ty';
-    true
-  with
-  | _ -> false
 
 let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
   match ty with
