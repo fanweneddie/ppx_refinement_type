@@ -7,6 +7,11 @@ let unify_base_type (env: Env.t) (ty: Types.type_expr) (ty': Types.type_expr): b
   with
   | _ -> false
 
+let string_of_expression expr = 
+  let _ = Format.flush_str_formatter () in
+  Printast.expression 0 Format.str_formatter expr;
+  Format.flush_str_formatter ()
+
 let string_of_pattern pattern =
   let _ = Format.flush_str_formatter () in
   Pprintast.pattern Format.str_formatter pattern;

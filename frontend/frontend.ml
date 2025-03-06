@@ -5,6 +5,8 @@ open Rty_lib
 open Rty_lib.Rty
 open Typecheck
 
+type info = {z3_ctx: Z3.context; env: Env.t; cctx: Smtcheck.constr_ctx}
+
 let attr_is_rty attribute = String.equal "rty" attribute.attr_name.txt
 let attr_is_axiom attribute = String.equal "axiom" attribute.attr_name.txt
 
@@ -94,71 +96,75 @@ let parse_pat_constr pat =
 let pat_var_expr z3_ctx pat ty = 
   match pat.ppat_desc with
   | Ppat_var {txt; _} ->
-    let sort = Smtcheck.convert_type z3_ctx ty in
+    let sort = Smtcheck.convert_type z3_ctx [] ty in
     Z3.Expr.mk_const_s z3_ctx txt sort
   | _ -> failwith "Not variable"
 
-let rec parse_rty z3_ctx env expr =
+let rec parse_rty info expr =
   match expr.pexp_desc with
   | Pexp_let (_, bindings, ret_rty) ->
     (* Build up the environment *)
     let (new_env, arg_list) =
       List.fold_left
         (fun (env, l) binding ->
-          let arg_rty = parse_rty z3_ctx env binding.pvb_expr in
+          let arg_rty = parse_rty {info with env = env} binding.pvb_expr in
           let ty = rty_to_type_expr arg_rty in
           let val_desc = Ocaml_typecheck.create_val_desc ty in
-          let name = pat_var_expr z3_ctx binding.pvb_pat ty in
+          let name = pat_var_expr info.z3_ctx binding.pvb_pat ty in
           let (_, new_env) = Env.enter_value (pat_var_name binding.pvb_pat) val_desc env in
           (new_env, l @ [(name,arg_rty)]))
-        (env, []) bindings
+        (info.env, []) bindings
     in
     List.fold_right
       (fun (arg_name, arg_rty) ret_rty ->
         RtyArrow { arg_name; arg_rty; ret_rty })
-      arg_list (parse_rty z3_ctx new_env ret_rty)
+      arg_list (parse_rty {info with env = new_env} ret_rty)
   | Pexp_constraint (phi, base_ty) ->
-    let base_ty = Ocaml_typecheck.process_type env base_ty in
+    let base_ty = Ocaml_typecheck.process_type info.env base_ty in
     let val_desc = Ocaml_typecheck.create_val_desc base_ty in
-    let (_,env) = Env.enter_value "v" val_desc env in
+    let (_,env) = Env.enter_value "v" val_desc info.env in
     let phi = 
-      Smtcheck.convert_phi z3_ctx (Ocaml_typecheck.process_expr env phi)
+      Smtcheck.transl_expr info.z3_ctx info.cctx (Ocaml_typecheck.process_expr env phi)
     in
-    let v = Smtcheck.create_var z3_ctx "var_v" base_ty in
-    let x = Smtcheck.create_var z3_ctx "v" base_ty in
+    let v = Smtcheck.create_var info.z3_ctx info.cctx "var_v" base_ty in
+    let x = Smtcheck.create_var info.z3_ctx info.cctx "v" base_ty in
     let phi = Z3.Expr.substitute_one phi v x in
     RtyBase { base_ty ; phi }
   | _ -> failwith "nope rty"
 
-let rec parse_axiom z3_ctx env prefix expr = 
+let rec parse_axiom info expr = 
   match expr.pexp_desc with
   | Pexp_constraint(phi, base_ty) ->
-    let base_ty = Ocaml_typecheck.process_type env base_ty in
-    let phi_ty = Ocaml_typecheck.process_expr env phi in
-    if Ocaml_helper.unify_base_type env base_ty Predef.type_bool then
-      Smtcheck.convert_phi z3_ctx phi_ty
+    let base_ty = Ocaml_typecheck.process_type info.env base_ty in
+    let phi_typed = Ocaml_typecheck.process_expr info.env phi in
+    if Ocaml_helper.unify_base_type info.env base_ty Predef.type_bool then
+      Smtcheck.transl_expr info.z3_ctx info.cctx phi_typed
     else
       failwith "axiom return type is not bool"
   | Pexp_fun (_, _, arg, body) ->
     let (name, tyc) = parse_pat_constr arg in
-    let ty = Ocaml_typecheck.process_type env tyc in
+    let ty = Ocaml_typecheck.process_type info.env tyc in
     let val_desc = Ocaml_typecheck.create_val_desc ty in
-    let (_, new_env) = Env.enter_value name val_desc env in
-    let phi = parse_axiom z3_ctx new_env prefix body in
-    let sym = Z3.Symbol.mk_string z3_ctx name in
-    let sort = Z3.Sort.mk_uninterpreted_s z3_ctx prefix in
-    let ret = Z3.Quantifier.mk_forall z3_ctx [sort] [sym] phi None [] [] None None in
+    let (_, new_env) = Env.enter_value name val_desc info.env in
+    let sym = Z3.Symbol.mk_string info.z3_ctx name in
+    let sort = Smtcheck.convert_type info.z3_ctx info.cctx ty in
+    let phi = parse_axiom {info with env = new_env} body in
+    let ret = 
+      Z3.Quantifier.mk_forall info.z3_ctx [sort] [sym] phi None [] [] None None 
+    in
     Z3.Quantifier.expr_of_quantifier ret
-  | _ -> failwith "nope axiom"
+  | _ -> 
+    let phi_typed = Ocaml_typecheck.process_expr info.env expr in
+    Smtcheck.transl_expr info.z3_ctx info.cctx phi_typed
 
-let parse_rty_binding z3_ctx env prefix value_binding =
+let parse_rty_binding info prefix value_binding =
   (prefix ^ pat_var_name value_binding.pvb_pat, 
-    parse_rty z3_ctx env value_binding.pvb_expr)
+    parse_rty info value_binding.pvb_expr)
 
-let parse_axiom_binding z3_ctx env prefix value_binding =
+let parse_axiom_binding info value_binding =
   (*print_endline (Ocaml_helper.string_of_pattern value_binding.pvb_pat);
-  print_endline (Pprintast.string_of_expression value_binding.pvb_expr);*)
-  let phi = parse_axiom z3_ctx env prefix value_binding.pvb_expr in
+  print_endline (Ocaml_helper.string_of_expression value_binding.pvb_expr);*)
+  let phi = parse_axiom info value_binding.pvb_expr in
   print_endline (Z3.Expr.to_string phi);
   ("", RtyBase{ base_ty = Predef.type_int; phi})
 
@@ -191,13 +197,17 @@ let rec type_struc
   let mod_info = List.filter_map item_mod_info pt_struc in
 
   let prefix = List.fold_left (fun acc x -> acc ^ x ^ ".") "" path in
+  (* somehow get the type declarations *)
+  (* make new uninterpreted sort for each declaration *)
+  let cctx = [] in
   let env = ty_struc.str_final_env in
+  let info = {z3_ctx; env; cctx} in
   let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
         match item.pstr_desc with
         | Pstr_value (_, [ value_binding ]) ->
-            Some (parse_rty_binding z3_ctx env prefix value_binding)
+          Some (parse_rty_binding info prefix value_binding)
         | _ -> None)
       rtys
   in
@@ -206,7 +216,7 @@ let rec type_struc
       (fun item ->
         match item.pstr_desc with
         | Pstr_value(_, [ value_binding ]) ->
-            Some (parse_axiom_binding z3_ctx env prefix value_binding)
+          Some (parse_axiom_binding info value_binding)
         | _ -> None)
       axioms
   in
@@ -222,7 +232,7 @@ let rec type_struc
        mod_info 
   in
   let anf_struc = Anormal.normalize ty_struc in
-  let ret_ctx = Rtycheck.bidirect_type z3_ctx module_ctx prefix anf_struc in
+  let ret_ctx = Rtycheck.bidirect_type z3_ctx module_ctx cctx prefix anf_struc in
   
   let () =
     List.iter
