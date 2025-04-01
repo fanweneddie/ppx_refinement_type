@@ -51,6 +51,14 @@ let item_mod_info pt_item =
     Some (n1, pstruc, tstruc)
   | _ -> None
 
+let module_ty_decl items =
+  List.filter_map
+    (fun item ->
+      match item.pstr_desc with
+      | Pstr_type(_, [ty]) -> Some(ty.ptype_name.txt)
+      | _ -> None)
+    items
+
 let rec module_partition binding =
   let pmod_desc = binding.pmb_expr.pmod_desc in
   match pmod_desc with
@@ -197,9 +205,13 @@ let rec type_struc
   let mod_info = List.filter_map item_mod_info pt_struc in
 
   let prefix = List.fold_left (fun acc x -> acc ^ x ^ ".") "" path in
-  (* somehow get the type declarations *)
-  (* make new uninterpreted sort for each declaration *)
-  let cctx = [] in
+  let ty_decl_names = module_ty_decl struc in
+  let cctx = List.map 
+    (fun name -> 
+      let sort = Z3.Sort.mk_uninterpreted_s z3_ctx (prefix ^ name) in
+      (name, sort)) 
+    ty_decl_names 
+  in
   let env = ty_struc.str_final_env in
   let info = {z3_ctx; env; cctx} in
   let rtys_ctx: rty_ctx =

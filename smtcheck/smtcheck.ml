@@ -1,11 +1,11 @@
 open Ocaml_common
 open Typedtree
 open Z3
+(* open Rty_lib *)
 
 type constr_ctx = (string * Sort.sort) list
 
 let constr_lookup (cctx: constr_ctx) (ident: string): Sort.sort =
-  print_endline (string_of_int (List.length cctx));
   let res = 
     List.find_opt (fun (name, _) -> String.equal name ident) cctx 
   in
@@ -75,6 +75,7 @@ let rec transl_expr
     | ">", [lhs; rhs] -> Arithmetic.mk_gt ctx lhs rhs
     | "<=", [lhs; rhs] -> Arithmetic.mk_le ctx lhs rhs
     | ">=", [lhs; rhs] -> Arithmetic.mk_ge ctx lhs rhs
+    | "#==>", [lhs; rhs] -> Boolean.mk_implies ctx lhs rhs
     | "+", _ -> Arithmetic.mk_add ctx args_z3
     | "-", _ -> Arithmetic.mk_sub ctx args_z3
     | "*", _ -> Arithmetic.mk_mul ctx args_z3
@@ -100,8 +101,8 @@ let rec transl_expr
   | _ -> failwith "transl_expr NI"
 
 
-let convert_phi (ctx: context) (phi: expression): Z3.Expr.expr =
-  transl_expr ctx [] phi
+(*let convert_phi (ctx: context) (phi: expression): Z3.Expr.expr =
+  transl_expr ctx [] phi*)
 
 let check (ctx: Z3.context) (c: Expr.expr) : unit =
   let solver = Z3.Solver.mk_solver ctx None in 

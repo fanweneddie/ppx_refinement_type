@@ -86,8 +86,51 @@ module Builtin = struct
           base_ty = Predef.type_int; phi = phi'
         }
       }
-    } 
+    }
 
+  let or_op (ctx: Z3.context): rty = 
+    let x = Boolean.mk_const_s ctx "var_x" in
+    let y = Boolean.mk_const_s ctx "var_y" in
+    let v = Boolean.mk_const_s ctx "v" in
+    let phi' = Boolean.mk_eq ctx v (Boolean.mk_or ctx [x; y]) in
+    RtyArrow {
+      arg_name = x;
+      arg_rty = RtyBase {
+        base_ty = Predef.type_bool; phi = Boolean.mk_true ctx
+      };
+      ret_rty = RtyArrow {
+        arg_name = y;
+        arg_rty = RtyBase {
+          base_ty = Predef.type_bool; phi = Boolean.mk_true ctx
+        };
+        ret_rty = RtyBase {
+          base_ty = Predef.type_bool; phi = phi'
+        }
+      }
+    }
+  
+  let and_op (ctx: Z3.context): rty = 
+    let x = Boolean.mk_const_s ctx "var_x" in
+    let y = Boolean.mk_const_s ctx "var_y" in
+    let v = Boolean.mk_const_s ctx "v" in
+    let phi' = Boolean.mk_eq ctx v (Boolean.mk_and ctx [x; y]) in
+    RtyArrow {
+      arg_name = x;
+      arg_rty = RtyBase {
+        base_ty = Predef.type_bool; phi = Boolean.mk_true ctx
+      };
+      ret_rty = RtyArrow {
+        arg_name = y;
+        arg_rty = RtyBase {
+          base_ty = Predef.type_bool; phi = Boolean.mk_true ctx
+        };
+        ret_rty = RtyBase {
+          base_ty = Predef.type_bool; phi = phi'
+        }
+      }
+    }
+
+  (* Need to remove this later *)
   let equal (ctx: Z3.context): rty =
     let x = Arithmetic.Integer.mk_const_s ctx "var_x" in 
     let y = Arithmetic.Integer.mk_const_s ctx "var_y" in
@@ -135,5 +178,7 @@ module Builtin = struct
     ("Stdlib.-", minus ctx); 
     ("Stdlib.*", times ctx);
     ("Stdlib.=", equal ctx);
-    ("Stdlib.>", gt ctx)] @ rctx
+    ("Stdlib.>", gt ctx);
+    ("Stdlib.||", or_op ctx);
+    ("Stdlib.&&", and_op ctx)] @ rctx
 end

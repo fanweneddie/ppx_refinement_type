@@ -3,17 +3,17 @@ open Rty_lib.Rty
 open Rty_lib.Ocaml_helper
 open Z3
 
-type full_ctx = { 
+type full_ctx = {
   z3: Z3.context; 
   rty: rty_ctx; 
   curr: rty_ctx; 
-  ctr: Smtcheck.constr_ctx 
+  ctr: Smtcheck.constr_ctx;
 }
 
 type ret_ctx = {z3: Z3.context; rty: rty_ctx}
 
 let ctx_lookup (ctx: rty_ctx) (ident: string): (string * rty) option =
-  List.find_opt (fun (name, _) -> String.equal name ident) ctx 
+  List.find_opt (fun (name, _) -> String.equal name ident) ctx
 
 let get_pat_str (pat: Typedtree.pattern): string =
   match pat.pat_desc with
@@ -78,7 +78,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         {
           base_ty = e.exp_type;
           phi = Boolean.mk_eq ctx.z3 
-            (Expr.mk_const_s ctx.z3 "v" sort) 
+            (Expr.mk_const_s ctx.z3 "v" sort)
             (Smtcheck.convert_constant ctx.z3 value)
         }
   | Texp_let(_, [vb], expr) -> 
@@ -90,7 +90,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
       type_infer new_ctx expr
     | _ -> failwith "type_infer: other cases in let pat")
   | Texp_let(_) -> failwith "Mutual recursion not supported"
-  | Texp_function{param; cases = [{c_rhs; _}]; _} -> 
+  | Texp_function{param; cases = [{c_rhs; _}]; _} ->
     (match Types.get_desc e.exp_type with
     | Tarrow (_, arg_ty, _, _) ->
       let arg_name = Smtcheck.create_var ctx.z3 ctx.ctr (Ident.name param) arg_ty in
@@ -121,7 +121,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         ([], [], ty) arg_exprs
     in
     let arg_z3_exprs = 
-      List.map (fun arg -> Smtcheck.convert_phi ctx.z3 arg) arg_exprs
+      List.map (fun arg -> Smtcheck.transl_expr ctx.z3 ctx.ctr arg) arg_exprs
     in
     let final_ty = 
       List.fold_left2
@@ -129,9 +129,10 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         final_ty arg_names arg_z3_exprs
     in
     final_ty
-  | Texp_match(_)
+  | Texp_match(_) -> 
+    RtyBase { base_ty = e.exp_type; phi = Boolean.mk_true ctx.z3 }
   | Texp_try(_)
-  | Texp_tuple(_)
+  | Texp_tuple(_) -> failwith "NI type infer 3"
   | Texp_construct(_) ->
       (* only works for booleans *)
       let sort = Smtcheck.convert_type ctx.z3 ctx.ctr e.exp_type in
@@ -139,8 +140,8 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
         {
           base_ty = e.exp_type;
           phi = Boolean.mk_eq ctx.z3 
-            (Expr.mk_const_s ctx.z3 "v" sort) 
-            (Smtcheck.convert_phi ctx.z3 e)
+            (Expr.mk_const_s ctx.z3 "v" sort)
+            (Smtcheck.transl_expr ctx.z3 ctx.ctr e)
         }
   | Texp_variant(_)
   | Texp_record(_)
@@ -213,7 +214,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
       check_subtype e.exp_env ctx ("v", ty') ("v", ty)
     | _ -> failwith "Other constructors not supported")
   | Texp_ifthenelse(b, e1, e2o) ->
-    let b_z3 = Smtcheck.convert_phi ctx.z3 b in
+    let b_z3 = Smtcheck.transl_expr ctx.z3 ctx.ctr b in
     let ty1 = RtyBase {base_ty = Predef.type_int; phi = b_z3} in
     let new_ctx1 = {ctx with rty = ("", ty1)::ctx.rty} in
     type_check new_ctx1 e1 ty;
@@ -253,8 +254,6 @@ let type_item (ctx: full_ctx) (prefix: string) (item: Typedtree.structure_item) 
   match item.str_desc with
   | Tstr_eval (e, _) -> let _ = type_infer ctx e in ctx
   | Tstr_value (_, [vb]) ->
-    (* Fix: get ctx.rty up to pat *)
-    (* ctx.rty only *)
     (let pty = ctx_pat_lookup ctx.rty prefix vb.vb_pat in
     match pty with
     | None ->

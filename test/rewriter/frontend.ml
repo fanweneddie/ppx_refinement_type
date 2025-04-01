@@ -89,7 +89,9 @@ module IList = struct
   let hd (l: t) (x: int): bool =
     match l with
     | [] -> false
-    | x::_ -> true;;
+    | y::_ -> x = y;;
+ 
+  let _func (l: t): bool = (emp l || hd l 4);;
 
   let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x)) 
 end

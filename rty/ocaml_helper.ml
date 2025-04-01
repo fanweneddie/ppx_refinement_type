@@ -29,8 +29,8 @@ let string_of_raw_type_expr ty =
   Printtyp.raw_type_expr ty;
   Format.flush_str_formatter ()
 
-let string_of_typedtree expr =
+let string_of_typedtree struc =
   let _ = Format.flush_str_formatter () in
   Format.fprintf Format.str_formatter "%a"
-  Printtyped.implementation expr;
+  Printtyped.implementation struc;
   Format.flush_str_formatter ()
