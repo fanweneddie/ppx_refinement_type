@@ -90,8 +90,47 @@ module IList = struct
     match l with
     | [] -> false
     | y::_ -> x = y;;
- 
-  let _func (l: t): bool = (emp l || hd l 4);;
 
-  let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x)) 
+  let rec equal (l1: t) (l2: t): bool =
+    match l1, l2 with
+    | [], [] -> true
+    | hd1::tl1, hd2::tl2 -> (hd1 = hd2) && (equal tl1 tl2)
+    | _, _ -> false;;
+
+  let rec tl (l: t) (l1: t): bool =
+    match l with
+    | [] -> equal l l1
+    | _::t -> (equal l l1) || (tl t l1);;
+
+  let cons (x: int) (l: t): t = x::l;;
+
+  let _func (l: t): bool = (emp l || hd l 4 || tl (cons 4 l) []);;
+
+  let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x));;
+
+  let[@axiom] list_emp_no_tl (l : t) (l1 : t) =
+    (emp l)#==>(not (tl l l1));;
+  
+  let[@axiom] list_no_emp_exists_tl (l : t) ((l1 [@exists]) : t) =
+    (not (emp l))#==>(tl l l1);;
+
+  let[@axiom] list_cons (l: t) (x: int) = hd (cons x l) x;;
 end
+
+module IStack = struct
+  type t = IList.t;;
+
+  let[@rty] push =
+    let l = (true: t) in 
+    let x = (true: int) in
+    (true: t)
+
+  let push (l: t) (x: int): t = List.cons x l;;
+
+  let pop (l: t): t =
+    match l with
+    | [] -> []
+    | _::tl -> tl
+end;;
+
+IStack.push [] 4 |> IStack.pop

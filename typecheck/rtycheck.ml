@@ -8,6 +8,7 @@ type full_ctx = {
   rty: rty_ctx; 
   curr: rty_ctx; 
   ctr: Smtcheck.constr_ctx;
+  stv: Smtcheck.val_ctx;
 }
 
 type ret_ctx = {z3: Z3.context; rty: rty_ctx}
@@ -102,47 +103,52 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : rty =
   | Texp_apply(op, args) ->
     (* Note: what if op does not have a refinement type? See Texp_ident*)
     let ty = type_infer ctx op in
-    let arg_exprs = 
-      List.map 
-        (fun arg -> 
-          match arg with
-          | (_, Some e) -> e 
-          | _ -> failwith "Labelled partial ap not supported")
-        args
-    in
-    let (arg_names, _arg_types, final_ty) = 
-      List.fold_left 
-        (fun (l1, l2, arg_rty) arg ->
-          match arg_rty with
-          | RtyArrow {arg_name; arg_rty; ret_rty} ->
-            let ty' = type_check ctx arg arg_rty in
-            (l1 @ [arg_name], l2 @ [ty'], ret_rty)
-          | _ -> failwith "Not rty arrow")
-        ([], [], ty) arg_exprs
-    in
-    let arg_z3_exprs = 
-      List.map (fun arg -> Smtcheck.transl_expr ctx.z3 ctx.ctr arg) arg_exprs
-    in
-    let final_ty = 
-      List.fold_left2
-        (fun ty arg_name arg_expr -> subst ty arg_name arg_expr)
-        final_ty arg_names arg_z3_exprs
-    in
-    final_ty
+    (match ty with
+    | RtyBase(_) -> RtyBase { base_ty = e.exp_type; phi = Boolean.mk_true ctx.z3 }
+    | RtyArrow(_) ->
+      let arg_exprs = 
+        List.map 
+          (fun arg -> 
+            match arg with
+            | (_, Some e) -> e 
+            | _ -> failwith "Labelled partial ap not supported")
+          args
+      in
+      let (arg_names, _arg_types, final_ty) = 
+        List.fold_left 
+          (fun (l1, l2, arg_rty) arg ->
+            match arg_rty with
+            | RtyArrow {arg_name; arg_rty; ret_rty} ->
+              let ty' = type_check ctx arg arg_rty in
+              (l1 @ [arg_name], l2 @ [ty'], ret_rty)
+            | _ -> failwith "Not rty arrow")
+          ([], [], ty) arg_exprs
+      in
+      let arg_z3_exprs = 
+        List.map (fun arg -> Smtcheck.transl_expr ctx.z3 ctx.ctr ctx.stv arg) arg_exprs
+      in
+      let final_ty = 
+        List.fold_left2
+          (fun ty arg_name arg_expr -> subst ty arg_name arg_expr)
+          final_ty arg_names arg_z3_exprs
+      in
+      final_ty)
   | Texp_match(_) -> 
     RtyBase { base_ty = e.exp_type; phi = Boolean.mk_true ctx.z3 }
   | Texp_try(_)
   | Texp_tuple(_) -> failwith "NI type infer 3"
-  | Texp_construct(_) ->
-      (* only works for booleans *)
+  | Texp_construct(_, {cstr_name; _}, _) ->
+    (match cstr_name with
+    | ("true" | "false") ->
       let sort = Smtcheck.convert_type ctx.z3 ctx.ctr e.exp_type in
       RtyBase
         {
           base_ty = e.exp_type;
           phi = Boolean.mk_eq ctx.z3 
             (Expr.mk_const_s ctx.z3 "v" sort)
-            (Smtcheck.transl_expr ctx.z3 ctx.ctr e)
+            (Smtcheck.transl_expr ctx.z3 ctx.ctr ctx.stv e)
         }
+    | _ -> RtyBase { base_ty = e.exp_type; phi = Boolean.mk_true ctx.z3 })
   | Texp_variant(_)
   | Texp_record(_)
   | Texp_field(_)
@@ -207,14 +213,11 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_match(_)
   | Texp_try(_)
   | Texp_tuple(_) -> failwith "NI TYPE_CHECK_3"
-  | Texp_construct(_, {cstr_name; _}, _) ->
-    (match cstr_name with
-    | ("true" | "false") ->
-      let ty' = type_infer ctx e in
-      check_subtype e.exp_env ctx ("v", ty') ("v", ty)
-    | _ -> failwith "Other constructors not supported")
+  | Texp_construct(_) ->
+    let ty' = type_infer ctx e in
+    check_subtype e.exp_env ctx ("v", ty') ("v", ty)
   | Texp_ifthenelse(b, e1, e2o) ->
-    let b_z3 = Smtcheck.transl_expr ctx.z3 ctx.ctr b in
+    let b_z3 = Smtcheck.transl_expr ctx.z3 ctx.ctr ctx.stv b in
     let ty1 = RtyBase {base_ty = Predef.type_int; phi = b_z3} in
     let new_ctx1 = {ctx with rty = ("", ty1)::ctx.rty} in
     type_check new_ctx1 e1 ty;
@@ -268,11 +271,12 @@ let bidirect_type
   (z3_ctx: Z3.context)
   (rctx: rty_ctx)
   (cctx: Smtcheck.constr_ctx)
+  (vctx: Smtcheck.val_ctx)
   (prefix: string)
   (struc: Typedtree.structure) : ret_ctx =
     let fctx = List.fold_left
       (fun ctx item -> type_item ctx prefix item)
-      {z3 = z3_ctx; rty = rctx; curr = []; ctr = cctx} struc.str_items
+      {z3 = z3_ctx; rty = rctx; curr = []; ctr = cctx; stv = vctx} struc.str_items
     in
     let pref_curr = List.map (fun (name, ty) -> (prefix ^ name, ty)) fctx.curr in
     {z3 = fctx.z3; rty = fctx.rty @ pref_curr}

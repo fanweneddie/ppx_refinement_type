@@ -1,9 +1,9 @@
 open Ocaml_common
 open Typedtree
 open Z3
-(* open Rty_lib *)
 
 type constr_ctx = (string * Sort.sort) list
+type val_ctx = (string * string) list
 
 let constr_lookup (cctx: constr_ctx) (ident: string): Sort.sort =
   let res = 
@@ -33,6 +33,14 @@ let convert_constant
   | Const_int n -> Arithmetic.Integer.mk_numeral_i ctx n
   | _ -> failwith "Unsupported constant type"
 
+let convert_val_name (vctx: val_ctx) (ident: string) =
+  let res = 
+    List.find_opt (fun (name, _) -> String.equal name ident) vctx 
+  in
+  match res with
+  | Some((_, full_name)) -> full_name
+  | None -> ident
+
 let create_var 
   (ctx: Z3.context) 
   (cctx: constr_ctx)
@@ -43,7 +51,8 @@ let create_var
 
 let rec transl_expr 
   (ctx: Z3.context) 
-  (cctx: constr_ctx) 
+  (cctx: constr_ctx)
+  (vctx: val_ctx)
   (e: expression): Z3.Expr.expr =
   match e.exp_desc with
   | Texp_ident (path, _, _) ->
@@ -55,15 +64,20 @@ let rec transl_expr
   | Texp_apply (op_expr, args) ->
     (let op: string =
       match op_expr.exp_desc with
-      | Texp_ident (_, {txt=Longident.Lident op; _}, _) -> op
-      | _ -> failwith "Unsupported operator expression"
+      | Texp_ident (_, ident, _) ->
+        let name = Longident.flatten ident.txt |>
+          List.fold_left (fun acc x -> acc ^ x ^ ".") "" 
+        in
+        let name = String.sub name 0 (String.length name - 1) in
+        convert_val_name vctx name
+      | _ -> failwith "Smtcheck: Unsupported operator expression"
     in
     let args_z3 = 
       List.filter_map 
         (fun (_, arg) ->
           match arg with
           | None -> None
-          | Some arg -> Some (transl_expr ctx cctx arg)) 
+          | Some arg -> Some (transl_expr ctx cctx vctx arg)) 
         args 
     in
     match op, args_z3 with 
