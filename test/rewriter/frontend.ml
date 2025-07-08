@@ -1,6 +1,6 @@
 (*open Stdlib*)
 
-(* let[@rty] p = (v >= 1: int);;
+let[@rty] p = (v >= 1: int);;
 
 let[@rty] foo = (v > 0: int);;
 
@@ -33,18 +33,22 @@ module Example = struct
     let x = (v >= 0: int) in (v >= 1: int);;
 
   let foo = 2;;
-  let func2 x = let y = x in y + 1;;
-  let func1 x = func2 x;;
+  (*let func2 x = let y = x in y + 1;;*)
+  let func1 x = x + 1;;
+
+  let _yabo = func1 foo;;
 end
 
 let p = Example.func1 Example.foo;;
 
-module PosEven = struct
+p;;
+
+(*module PosEven = struct
   type _t = int;;
 
   let[@axiom] pos_even (n: _t): bool = 
     (n > 0) && (n mod 2 = 0)
-end;;
+end;;*)
 
 let[@rty] bar2 = 
 let x = (true: int) in (v > 0: int);;
@@ -68,30 +72,25 @@ let [@rty] res = (v >= 1: int);;
 let res = fact 5;;
 res;;
 
-
-let [@rty] func1 =
-  let x = (v >= 0: int) in (v >= 1: int);;
-
-let func2 x = let y = x in y + 1;;
-
-let func1 x = func2 x;;
-
-func1 (4+p) *)
-
+(*
 module IList = struct
   type t = int list;;
   
-  let emp (l: t): bool = 
+  (*let emp (l: t): bool = 
     match l with
     | [] -> true
-    | _ -> false;;
+    | _ -> false;;*)
+
+  let[@rty] empty = (true: t);;
+
+  let empty = [];;
 
   let hd (l: t) (x: int): bool =
     match l with
     | [] -> false
     | y::_ -> x = y;;
 
-  let rec equal (l1: t) (l2: t): bool =
+  (*let rec equal (l1: t) (l2: t): bool =
     match l1, l2 with
     | [], [] -> true
     | hd1::tl1, hd2::tl2 -> (hd1 = hd2) && (equal tl1 tl2)
@@ -100,37 +99,23 @@ module IList = struct
   let rec tl (l: t) (l1: t): bool =
     match l with
     | [] -> equal l l1
-    | _::t -> (equal l l1) || (tl t l1);;
+    | _::t -> (equal l l1) || (tl t l1);;*)
 
   let cons (x: int) (l: t): t = x::l;;
 
-  let _func (l: t): bool = (emp l || hd l 4 || tl (cons 4 l) []);;
+  let _func (l: t): bool = ((*emp l ||*) hd empty 4 || hd (cons 4 l) 3);;
 
-  let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x));;
+  (*let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x));;
 
   let[@axiom] list_emp_no_tl (l : t) (l1 : t) =
     (emp l)#==>(not (tl l l1));;
   
   let[@axiom] list_no_emp_exists_tl (l : t) ((l1 [@exists]) : t) =
-    (not (emp l))#==>(tl l l1);;
+    (not (emp l))#==>(tl l l1);;*)
 
   let[@axiom] list_cons (l: t) (x: int) = hd (cons x l) x;;
 end
 
-module IStack = struct
-  type t = IList.t;;
+let[@rty] test_axiom = ((*v = *)true: bool);;
 
-  let[@rty] push =
-    let l = (true: t) in 
-    let x = (true: int) in
-    (true: t)
-
-  let push (l: t) (x: int): t = List.cons x l;;
-
-  let pop (l: t): t =
-    match l with
-    | [] -> []
-    | _::tl -> tl
-end;;
-
-IStack.push [] 4 |> IStack.pop
+let test_axiom = IList.hd (IList.cons 4 IList.empty) 4;;*)

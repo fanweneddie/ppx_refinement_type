@@ -16,10 +16,10 @@ let constr_lookup (cctx: constr_ctx) (ident: string): Sort.sort =
 let convert_type 
   (ctx: Z3.context) 
   (cctx: constr_ctx) 
-  (bty: Types.type_expr): Sort.sort = 
+  (bty: Types.type_expr): Sort.sort =
   match Types.get_desc bty with
-  | Tconstr(Pident(id), _, _) ->
-    let name = Ident.name id in
+  | Tconstr(path, _, _) ->
+    let name = Path.name path in
     (match name with
     | "int" -> Arithmetic.Integer.mk_sort ctx
     | "bool" -> Boolean.mk_sort ctx
@@ -53,10 +53,15 @@ let rec transl_expr
   (ctx: Z3.context) 
   (cctx: constr_ctx)
   (vctx: val_ctx)
+  (prefix: string)
   (e: expression): Z3.Expr.expr =
   match e.exp_desc with
   | Texp_ident (path, _, _) ->
-    let name = "var_" ^ Path.name path in
+    let name =
+      (match path with
+      | Pident(_) -> "var_" ^ prefix ^ Path.name path
+      | _ -> "var_" ^ Path.name path)
+    in
     let sort = convert_type ctx cctx e.exp_type in
     Expr.mk_const_s ctx name sort
     (*Arithmetic.Integer.mk_const_s ctx name*)
@@ -77,7 +82,7 @@ let rec transl_expr
         (fun (_, arg) ->
           match arg with
           | None -> None
-          | Some arg -> Some (transl_expr ctx cctx vctx arg)) 
+          | Some arg -> Some (transl_expr ctx cctx vctx prefix arg)) 
         args 
     in
     match op, args_z3 with 
@@ -121,7 +126,10 @@ let rec transl_expr
 let check (ctx: Z3.context) (c: Expr.expr) : unit =
   let solver = Z3.Solver.mk_solver ctx None in 
   let subtype_expr = Boolean.mk_not ctx c in
-  let _ = Solver.add solver [subtype_expr] in 
+  let _ = Solver.add solver [subtype_expr] in
+  (*print_endline "BEGIN";
+  print_endline (Z3.Expr.to_string c);
+  print_endline "END";*)
   match Solver.check (solver) [] with
   | SATISFIABLE -> failwith "Type error"
   | UNSATISFIABLE -> ()

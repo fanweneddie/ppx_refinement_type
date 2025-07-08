@@ -8,7 +8,7 @@ type rty =
   | RtyBase of { base_ty : type_expr; phi : Expr.expr }
   | RtyArrow of { arg_name : Expr.expr; arg_rty : rty; ret_rty : rty }
 
-type rty_ctx = (string * rty) list
+type rty_ctx = (string * string * rty) list
 
 type rty_exp = (expression * rty)
 type rty_exp_list = rty_exp list
@@ -23,6 +23,11 @@ let rec layout_rty = function
         (Z3.Expr.to_string arg_name)
         (layout_rty arg_rty) (layout_rty ret_rty)
 
+let print_rty_ctx ctx = 
+  List.fold_left 
+    (fun _ (name, prefix, ty) -> 
+      (print_endline (prefix ^ name); print_endline (layout_rty ty))) 
+    () ctx
 
 module Builtin = struct
   let plus (ctx: Z3.context): rty = 
@@ -174,11 +179,11 @@ module Builtin = struct
     } 
  
   let add_builtins (ctx: Z3.context) (rctx: rty_ctx): rty_ctx =
-    [("Stdlib.+", plus ctx); 
-    ("Stdlib.-", minus ctx); 
-    ("Stdlib.*", times ctx);
-    ("Stdlib.=", equal ctx);
-    ("Stdlib.>", gt ctx);
-    ("Stdlib.||", or_op ctx);
-    ("Stdlib.&&", and_op ctx)] @ rctx
+    [("Stdlib.+", "", plus ctx); 
+    ("Stdlib.-", "", minus ctx); 
+    ("Stdlib.*", "", times ctx);
+    ("Stdlib.=", "", equal ctx);
+    ("Stdlib.>", "", gt ctx);
+    ("Stdlib.||", "", or_op ctx);
+    ("Stdlib.&&", "", and_op ctx)] @ rctx
 end

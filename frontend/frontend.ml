@@ -10,6 +10,7 @@ type info = {
   env: Env.t; 
   cctx: Smtcheck.constr_ctx;
   vctx: Smtcheck.val_ctx;
+  prefix: string;
 }
 
 let attr_is_rty attribute = String.equal "rty" attribute.attr_name.txt
@@ -154,10 +155,11 @@ let rec parse_rty info expr =
       Smtcheck.transl_expr 
         info.z3_ctx 
         info.cctx 
-        info.vctx 
+        info.vctx
+        info.prefix
         (Ocaml_typecheck.process_expr env phi)
     in
-    let v = Smtcheck.create_var info.z3_ctx info.cctx "var_v" base_ty in
+    let v = Smtcheck.create_var info.z3_ctx info.cctx ("var_" ^ info.prefix ^ "v") base_ty in
     let x = Smtcheck.create_var info.z3_ctx info.cctx "v" base_ty in
     let phi = Z3.Expr.substitute_one phi v x in
     RtyBase { base_ty ; phi }
@@ -174,6 +176,7 @@ let rec parse_axiom info expr =
         info.z3_ctx 
         info.cctx
         info.vctx
+        info.prefix
         phi_typed
     else
       failwith "axiom return type is not bool"
@@ -198,10 +201,11 @@ let rec parse_axiom info expr =
       info.z3_ctx 
       info.cctx 
       info.vctx
+      info.prefix
       phi_typed
 
-let parse_rty_binding info prefix value_binding =
-  (prefix ^ pat_var_name value_binding.pvb_pat, 
+let parse_rty_binding info value_binding =
+  (pat_var_name value_binding.pvb_pat, info.prefix,
     parse_rty info value_binding.pvb_expr)
 
 let parse_axiom_binding info value_binding =
@@ -209,7 +213,7 @@ let parse_axiom_binding info value_binding =
   print_endline (Ocaml_helper.string_of_expression value_binding.pvb_expr);*)
   let phi = parse_axiom info value_binding.pvb_expr in
   print_endline (Z3.Expr.to_string phi);
-  ("", RtyBase{ base_ty = Predef.type_int; phi})
+  ("", info.prefix, RtyBase{ base_ty = Predef.type_int; phi})
 
 let get_impl_from_typed_items name prefix struc =
   let open Ocaml_common.Typedtree in
@@ -251,13 +255,13 @@ let rec type_struc
   let vctx = List.map (fun name -> (name, prefix ^ name)) val_names in
 
   let env = ty_struc.str_final_env in
-  let info = {z3_ctx; env; cctx; vctx} in
+  let info = {z3_ctx; env; cctx; vctx; prefix} in
   let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
         match item.pstr_desc with
         | Pstr_value (_, [ value_binding ]) ->
-          Some (parse_rty_binding info prefix value_binding)
+          Some (parse_rty_binding info value_binding)
         | _ -> None)
       rtys
   in
@@ -286,14 +290,14 @@ let rec type_struc
   
   let () =
     List.iter
-      (fun (name, rty) ->
-        match get_impl_from_typed_items name prefix ty_struc with
+      (fun (name, pref, rty) ->
+        match get_impl_from_typed_items (pref ^ name) prefix ty_struc with
         | None ->
             Printf.printf "cannot find the implementation of function %s\n"
-              (name)
+              (pref ^ name)
         | Some impl ->
             Printf.printf "Type judgement [%s]\n|-\n%s\n: %s\n"
-              (name)
+              (pref ^ name)
               (Pprintast.string_of_expression
               @@ Ocaml_common.Untypeast.untype_expression impl)
               (Rty.layout_rty rty))
