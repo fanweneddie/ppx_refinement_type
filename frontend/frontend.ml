@@ -9,7 +9,7 @@ type info = {
   z3_ctx: Z3.context; 
   env: Env.t; 
   cctx: Smtcheck.constr_ctx;
-  vctx: Smtcheck.val_ctx;
+  (*vctx: Smtcheck.val_ctx;*)
   prefix: string;
 }
 
@@ -121,10 +121,10 @@ let parse_pat_constr pat =
     (pat_var_name pat, ty, pat_exists pat)
   | _ -> failwith "Not constraint"
 
-let pat_var_expr z3_ctx cctx pat ty = 
+let pat_var_expr z3_ctx cctx prefix pat ty = 
   match pat.ppat_desc with
   | Ppat_var {txt; _} ->
-    let sort = Smtcheck.convert_type z3_ctx cctx ty in
+    let sort = Smtcheck.convert_type z3_ctx cctx prefix ty in
     Z3.Expr.mk_const_s z3_ctx txt sort
   | _ -> failwith "Not variable"
 
@@ -138,7 +138,7 @@ let rec parse_rty info expr =
           let arg_rty = parse_rty {info with env = env} binding.pvb_expr in
           let ty = rty_to_type_expr arg_rty in
           let val_desc = Ocaml_typecheck.create_val_desc ty in
-          let name = pat_var_expr info.z3_ctx info.cctx binding.pvb_pat ty in
+          let name = pat_var_expr info.z3_ctx info.cctx info.prefix binding.pvb_pat ty in
           let (_, new_env) = Env.enter_value (pat_var_name binding.pvb_pat) val_desc env in
           (new_env, l @ [(name,arg_rty)]))
         (info.env, []) bindings
@@ -155,12 +155,26 @@ let rec parse_rty info expr =
       Smtcheck.transl_expr 
         info.z3_ctx 
         info.cctx 
-        info.vctx
+        (*info.vctx*)
         info.prefix
         (Ocaml_typecheck.process_expr env phi)
     in
-    let v = Smtcheck.create_var info.z3_ctx info.cctx ("var_" ^ info.prefix ^ "v") base_ty in
-    let x = Smtcheck.create_var info.z3_ctx info.cctx "v" base_ty in
+    let v = 
+      Smtcheck.create_var 
+        info.z3_ctx 
+        info.cctx 
+        info.prefix 
+        ("var_" ^ info.prefix ^ "v") 
+        base_ty 
+    in
+    let x =
+      Smtcheck.create_var 
+        info.z3_ctx 
+        info.cctx 
+        info.prefix 
+        "v" 
+        base_ty 
+    in
     let phi = Z3.Expr.substitute_one phi v x in
     RtyBase { base_ty ; phi }
   | _ -> failwith "nope rty"
@@ -173,9 +187,9 @@ let rec parse_axiom info expr =
     if Ocaml_helper.unify_base_type info.env base_ty Predef.type_bool 
       && Ocaml_helper.unify_base_type info.env phi_typed.exp_type Predef.type_bool then
       Smtcheck.transl_expr 
-        info.z3_ctx 
+        info.z3_ctx
         info.cctx
-        info.vctx
+        (*info.vctx*)
         info.prefix
         phi_typed
     else
@@ -185,8 +199,9 @@ let rec parse_axiom info expr =
     let ty = Ocaml_typecheck.process_type info.env tyc in
     let val_desc = Ocaml_typecheck.create_val_desc ty in
     let (_, new_env) = Env.enter_value name val_desc info.env in
-    let sym = Z3.Symbol.mk_string info.z3_ctx name in
-    let sort = Smtcheck.convert_type info.z3_ctx info.cctx ty in
+    let sym_name = "var_" ^ info.prefix ^ name in
+    let sym = Z3.Symbol.mk_string info.z3_ctx sym_name in
+    let sort = Smtcheck.convert_type info.z3_ctx info.cctx info.prefix ty in
     let phi = parse_axiom {info with env = new_env} body in
     let ret = 
       if exists then
@@ -200,7 +215,7 @@ let rec parse_axiom info expr =
     Smtcheck.transl_expr 
       info.z3_ctx 
       info.cctx 
-      info.vctx
+      (*info.vctx*)
       info.prefix
       phi_typed
 
@@ -232,10 +247,11 @@ let get_impl_from_typed_items name prefix struc =
 
 let rec type_struc 
   (z3_ctx: Z3.context) 
-  (top_ctx: rty_ctx) 
+  (top_ctx: rty_ctx)
+  (top_cctx: Smtcheck.constr_ctx)
   (path: string list)
   (struc: Parsetree.structure) 
-  (ty_struc: Typedtree.structure) =
+  (ty_struc: Typedtree.structure): (rty_ctx * Smtcheck.constr_ctx) =
   let rtys, ax_struc = List.partition item_is_rty struc in
   let axioms, struc = List.partition item_is_axiom ax_struc in
   
@@ -245,17 +261,18 @@ let rec type_struc
 
   let prefix = List.fold_left (fun acc x -> acc ^ x ^ ".") "" path in
   let ty_decl_names = module_ty_decl struc in
-  let val_names = module_val struc in
-  let cctx = List.map 
-    (fun name -> 
-      let sort = Z3.Sort.mk_uninterpreted_s z3_ctx (prefix ^ name) in
-      (name, sort)) 
-    ty_decl_names 
+  (*let val_names = module_val struc in*)
+  let cctx: Smtcheck.constr_ctx = 
+    List.map 
+      (fun name -> 
+        let sort = Z3.Sort.mk_uninterpreted_s z3_ctx (prefix ^ name) in
+        (prefix ^ name, sort)) 
+      ty_decl_names 
   in
-  let vctx = List.map (fun name -> (name, prefix ^ name)) val_names in
+  (*let vctx: Smtcheck.val_ctx = List.map (fun name -> (name, prefix ^ name)) val_names in*)
 
   let env = ty_struc.str_final_env in
-  let info = {z3_ctx; env; cctx; vctx; prefix} in
+  let info = {z3_ctx; env; cctx; (*vctx;*) prefix} in
   let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
@@ -278,15 +295,16 @@ let rec type_struc
   (* Also order of the type declaration 
     and implementation is not checked*)
   let top_ctx = axioms_ctx @ rtys_ctx @ top_ctx in
-  let module_ctx = 
+  let top_cctx = cctx @ top_cctx in
+  let (module_rctx, module_cctx) = 
     List.fold_left 
-      (fun ctx (name, pstruc, tstruc) -> 
-        type_struc z3_ctx ctx (path @ [name]) pstruc tstruc) 
-      top_ctx 
+      (fun (rctx, cctx) (name, pstruc, tstruc) -> 
+        type_struc z3_ctx rctx cctx (path @ [name]) pstruc tstruc) 
+      (top_ctx, top_cctx) 
       mod_info 
   in
   let anf_struc = Anormal.normalize ty_struc in
-  let ret_ctx = Rtycheck.bidirect_type z3_ctx module_ctx cctx vctx prefix anf_struc in
+  let ret_ctx = Rtycheck.bidirect_type z3_ctx module_rctx module_cctx (*vctx*) prefix anf_struc in
   
   let () =
     List.iter
@@ -303,7 +321,7 @@ let rec type_struc
               (Rty.layout_rty rty))
       rtys_ctx
   in
-  ret_ctx.rty
+  (ret_ctx.rty, cctx)
 
 let impl struc =
   let ret_struc = remove_attr struc in
@@ -312,7 +330,7 @@ let impl struc =
   
   let z3_ctx = Z3.mk_context [] in
   let builtin_ctx = Rty.Builtin.add_builtins z3_ctx [] in
-  let _ = type_struc z3_ctx builtin_ctx [] struc ty_struc in
+  let _ = type_struc z3_ctx builtin_ctx [] [] struc ty_struc in
   ret_struc
 
 let intf intf = intf

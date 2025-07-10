@@ -72,8 +72,8 @@ let [@rty] res = (v >= 1: int);;
 let res = fact 5;;
 res;;
 
-(*
-module IList = struct
+
+(*module IList = struct
   type t = int list;;
   
   (*let emp (l: t): bool = 
@@ -113,7 +113,7 @@ module IList = struct
   let[@axiom] list_no_emp_exists_tl (l : t) ((l1 [@exists]) : t) =
     (not (emp l))#==>(tl l l1);;*)
 
-  let[@axiom] list_cons (l: t) (x: int) = hd (cons x l) x;;
+  let[@axiom] list_cons (l: t) (x: int) = (hd (cons x l) x) #==> false;;
 end
 
 let[@rty] test_axiom = ((*v = *)true: bool);;

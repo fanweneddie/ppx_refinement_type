@@ -3,19 +3,21 @@ open Typedtree
 open Z3
 
 type constr_ctx = (string * Sort.sort) list
-type val_ctx = (string * string) list
+(*type val_ctx = (string * string) list*)
 
 let constr_lookup (cctx: constr_ctx) (ident: string): Sort.sort =
   let res = 
-    List.find_opt (fun (name, _) -> String.equal name ident) cctx 
+    List.find_opt (fun (name, _) -> (*print_endline name;*) String.equal name ident) cctx 
   in
+  (*print_endline @@ string_of_int (List.length cctx);*)
   match res with
   | Some((_, sort)) -> sort
   | None -> failwith ("Constructor type " ^ (ident) ^ " not found")
 
 let convert_type 
   (ctx: Z3.context) 
-  (cctx: constr_ctx) 
+  (cctx: constr_ctx)
+  (prefix: string)
   (bty: Types.type_expr): Sort.sort =
   match Types.get_desc bty with
   | Tconstr(path, _, _) ->
@@ -23,7 +25,7 @@ let convert_type
     (match name with
     | "int" -> Arithmetic.Integer.mk_sort ctx
     | "bool" -> Boolean.mk_sort ctx
-    | _ -> constr_lookup cctx name)
+    | _ -> constr_lookup cctx (prefix ^ name))
   | _ -> failwith "Type not constructor" 
 
 let convert_constant 
@@ -33,26 +35,27 @@ let convert_constant
   | Const_int n -> Arithmetic.Integer.mk_numeral_i ctx n
   | _ -> failwith "Unsupported constant type"
 
-let convert_val_name (vctx: val_ctx) (ident: string) =
+(*let convert_val_name (vctx: val_ctx) (ident: string) =
   let res = 
     List.find_opt (fun (name, _) -> String.equal name ident) vctx 
   in
   match res with
   | Some((_, full_name)) -> full_name
-  | None -> ident
+  | None -> ident*)
 
 let create_var 
   (ctx: Z3.context) 
   (cctx: constr_ctx)
+  (prefix: string)
   (name: string) 
   (bty: Types.type_expr): Expr.expr =
-  let sort = convert_type ctx cctx bty in
+  let sort = convert_type ctx cctx prefix bty in
   Expr.mk_const_s ctx name sort
 
 let rec transl_expr 
   (ctx: Z3.context) 
   (cctx: constr_ctx)
-  (vctx: val_ctx)
+  (*(vctx: val_ctx)*)
   (prefix: string)
   (e: expression): Z3.Expr.expr =
   match e.exp_desc with
@@ -62,19 +65,23 @@ let rec transl_expr
       | Pident(_) -> "var_" ^ prefix ^ Path.name path
       | _ -> "var_" ^ Path.name path)
     in
-    let sort = convert_type ctx cctx e.exp_type in
+    let sort = convert_type ctx cctx prefix e.exp_type in
     Expr.mk_const_s ctx name sort
     (*Arithmetic.Integer.mk_const_s ctx name*)
   | Texp_constant c -> convert_constant ctx c
   | Texp_apply (op_expr, args) ->
     (let op: string =
       match op_expr.exp_desc with
-      | Texp_ident (_, ident, _) ->
-        let name = Longident.flatten ident.txt |>
+      | Texp_ident (path, _, _) ->
+        let name = Path.name path in
+        (match path with
+        | Pident(_) when not(String.equal name "#==>") -> prefix ^ Path.name path
+        | _ -> Path.name path)
+        (*let name = Longident.flatten ident.txt |>
           List.fold_left (fun acc x -> acc ^ x ^ ".") "" 
         in
-        let name = String.sub name 0 (String.length name - 1) in
-        convert_val_name vctx name
+        let name = String.sub name 0 (String.length name - 1) in*)
+        (*convert_val_name vctx name*)
       | _ -> failwith "Smtcheck: Unsupported operator expression"
     in
     let args_z3 = 
@@ -82,34 +89,34 @@ let rec transl_expr
         (fun (_, arg) ->
           match arg with
           | None -> None
-          | Some arg -> Some (transl_expr ctx cctx vctx prefix arg)) 
+          | Some arg -> Some (transl_expr ctx cctx (*vctx*) prefix arg))
         args 
     in
     match op, args_z3 with 
-    | "-", [arg] -> Arithmetic.mk_unary_minus ctx arg
-    | "not", [arg] -> Boolean.mk_not ctx arg
-    | "=", [lhs; rhs] -> Boolean.mk_eq ctx lhs rhs
-    | "/", [lhs; rhs] -> Arithmetic.mk_div ctx lhs rhs
-    | "<", [lhs; rhs] -> Arithmetic.mk_lt ctx lhs rhs
-    | ">", [lhs; rhs] -> Arithmetic.mk_gt ctx lhs rhs
-    | "<=", [lhs; rhs] -> Arithmetic.mk_le ctx lhs rhs
-    | ">=", [lhs; rhs] -> Arithmetic.mk_ge ctx lhs rhs
+    | "Stdlib.-", [arg] -> Arithmetic.mk_unary_minus ctx arg
+    | "Stdlib.not", [arg] -> Boolean.mk_not ctx arg
+    | "Stdlib.=", [lhs; rhs] -> Boolean.mk_eq ctx lhs rhs
+    | "Stdlib./", [lhs; rhs] -> Arithmetic.mk_div ctx lhs rhs
+    | "Stdlib.<", [lhs; rhs] -> Arithmetic.mk_lt ctx lhs rhs
+    | "Stdlib.>", [lhs; rhs] -> Arithmetic.mk_gt ctx lhs rhs
+    | "Stdlib.<=", [lhs; rhs] -> Arithmetic.mk_le ctx lhs rhs
+    | "Stdlib.>=", [lhs; rhs] -> Arithmetic.mk_ge ctx lhs rhs
     | "#==>", [lhs; rhs] -> Boolean.mk_implies ctx lhs rhs
-    | "+", _ -> Arithmetic.mk_add ctx args_z3
-    | "-", _ -> Arithmetic.mk_sub ctx args_z3
-    | "*", _ -> Arithmetic.mk_mul ctx args_z3
-    | "&&", _ -> Boolean.mk_and ctx args_z3
-    | "||", _ -> Boolean.mk_or ctx args_z3
+    | "Stdlib.+", _ -> Arithmetic.mk_add ctx args_z3
+    | "Stdlib.-", _ -> Arithmetic.mk_sub ctx args_z3
+    | "Stdlib.*", _ -> Arithmetic.mk_mul ctx args_z3
+    | "Stdlib.&&", _ -> Boolean.mk_and ctx args_z3
+    | "Stdlib.||", _ -> Boolean.mk_or ctx args_z3
     | _ ->
       let arg_sorts = 
         List.filter_map 
           (fun (_, arg) -> 
             match arg with
             | None -> failwith "transl_expr: Labelled partial application not supported"
-            | Some arg -> Some (convert_type ctx cctx arg.exp_type)) 
+            | Some arg -> Some (convert_type ctx cctx prefix arg.exp_type)) 
           args 
       in
-      let ret_sort = convert_type ctx cctx e.exp_type in
+      let ret_sort = convert_type ctx cctx prefix e.exp_type in
       let f = FuncDecl.mk_func_decl_s ctx op arg_sorts ret_sort in
       FuncDecl.apply f args_z3) 
   | Texp_construct (_, {cstr_name; _}, _) ->
