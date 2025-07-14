@@ -220,7 +220,7 @@ let rec parse_axiom info expr =
       phi_typed
 
 let parse_rty_binding info value_binding =
-  (pat_var_name value_binding.pvb_pat, info.prefix,
+  (info.prefix ^ (pat_var_name value_binding.pvb_pat), info.prefix,
     parse_rty info value_binding.pvb_expr)
 
 let parse_axiom_binding info value_binding =
@@ -308,14 +308,14 @@ let rec type_struc
   
   let () =
     List.iter
-      (fun (name, pref, rty) ->
-        match get_impl_from_typed_items (pref ^ name) prefix ty_struc with
+      (fun (name, _, rty) ->
+        match get_impl_from_typed_items name prefix ty_struc with
         | None ->
             Printf.printf "cannot find the implementation of function %s\n"
-              (pref ^ name)
+              (name)
         | Some impl ->
             Printf.printf "Type judgement [%s]\n|-\n%s\n: %s\n"
-              (pref ^ name)
+              (name)
               (Pprintast.string_of_expression
               @@ Ocaml_common.Untypeast.untype_expression impl)
               (Rty.layout_rty rty))

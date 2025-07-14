@@ -1,5 +1,3 @@
-(*open Stdlib*)
-
 let[@rty] p = (v >= 1: int);;
 
 let[@rty] foo = (v > 0: int);;
@@ -73,7 +71,7 @@ let res = fact 5;;
 res;;
 
 
-(*module IList = struct
+module IList = struct
   type t = int list;;
   
   (*let emp (l: t): bool = 
@@ -113,9 +111,11 @@ res;;
   let[@axiom] list_no_emp_exists_tl (l : t) ((l1 [@exists]) : t) =
     (not (emp l))#==>(tl l l1);;*)
 
-  let[@axiom] list_cons (l: t) (x: int) = (hd (cons x l) x) #==> false;;
+  let[@axiom] list_cons (l: t) (x: int) = hd (cons x l) x;;
 end
 
 let[@rty] test_axiom = ((*v = *)true: bool);;
 
-let test_axiom = IList.hd (IList.cons 4 IList.empty) 4;;*)
+let test_axiom = IList.hd (IList.cons 4 IList.empty) 4;;
+
+test_axiom
