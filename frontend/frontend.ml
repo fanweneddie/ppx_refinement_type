@@ -101,17 +101,6 @@ and remove_attr items =
       | _ -> Some item)
     items
 
-let rec rty_to_type_expr (rty: rty): Types.type_expr =
-  match rty with
-  | RtyBase { base_ty; _ } -> base_ty
-  | RtyArrow { arg_rty; ret_rty; _ } ->
-    let arg_ty = rty_to_type_expr arg_rty in
-    let ret_ty = rty_to_type_expr ret_rty in
-    Types.create_expr 
-      (Tarrow (Nolabel, arg_ty, ret_ty, Types.commu_ok))
-      ~level:0 ~scope:0 ~id:0
-
-
 let pat_exists pat = 
   List.exists attr_is_exists pat.ppat_attributes
 
@@ -186,12 +175,15 @@ let rec parse_axiom info expr =
     let phi_typed = Ocaml_typecheck.process_expr info.env phi in
     if Ocaml_helper.unify_base_type info.env base_ty Predef.type_bool 
       && Ocaml_helper.unify_base_type info.env phi_typed.exp_type Predef.type_bool then
-      Smtcheck.transl_expr 
-        info.z3_ctx
-        info.cctx
-        (*info.vctx*)
-        info.prefix
-        phi_typed
+      let constr = 
+        Smtcheck.transl_expr 
+          info.z3_ctx
+          info.cctx
+          (*info.vctx*)
+          info.prefix
+          phi_typed
+      in
+      Z3.Boolean.mk_eq info.z3_ctx (constr) (Z3.Boolean.mk_true info.z3_ctx)
     else
       failwith "axiom return type is not bool"
   | Pexp_fun (_, _, arg, body) ->
@@ -212,12 +204,15 @@ let rec parse_axiom info expr =
     Z3.Quantifier.expr_of_quantifier ret
   | _ -> 
     let phi_typed = Ocaml_typecheck.process_expr info.env expr in
-    Smtcheck.transl_expr 
-      info.z3_ctx 
-      info.cctx 
-      (*info.vctx*)
-      info.prefix
-      phi_typed
+    let constr = 
+      Smtcheck.transl_expr 
+        info.z3_ctx 
+        info.cctx 
+        (*info.vctx*)
+        info.prefix
+        phi_typed
+    in
+    Z3.Boolean.mk_eq info.z3_ctx (constr) (Z3.Boolean.mk_true info.z3_ctx)
 
 let parse_rty_binding info value_binding =
   (info.prefix ^ (pat_var_name value_binding.pvb_pat), info.prefix,
@@ -246,7 +241,7 @@ let get_impl_from_typed_items name prefix struc =
     struc.str_items
 
 let rec type_struc 
-  (z3_ctx: Z3.context) 
+  (z3_ctx: Z3.context)
   (top_ctx: rty_ctx)
   (top_cctx: Smtcheck.constr_ctx)
   (path: string list)

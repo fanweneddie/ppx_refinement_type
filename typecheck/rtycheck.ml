@@ -43,17 +43,18 @@ let rec subst (ty: rty) (name: Expr.expr) (expr: Expr.expr): rty =
       RtyArrow {arg_name; arg_rty; ret_rty}
 
 (* use arg_name to replace it with v *)
-let entailment (ctx: full_ctx) (pred: Expr.expr): Expr.expr =
+let entailment (ctx: full_ctx): Expr.expr list =
   List.fold_left
-    (fun pred (name, prefix, ty) ->
+    (fun assumptions (name, prefix, ty) ->
       match ty with
       | RtyBase {base_ty; phi} ->
         let v = Smtcheck.create_var ctx.z3 ctx.ctr prefix "v" base_ty in
         let x = Smtcheck.create_var ctx.z3 ctx.ctr prefix ("var_" ^ name) base_ty in
         let phi = Expr.substitute_one phi v x in
-        Boolean.mk_implies ctx.z3 phi pred
-      | RtyArrow (_) -> pred)
-    pred ctx.rty
+        assumptions @ [phi]
+        (*Boolean.mk_implies ctx.z3 phi pred*)
+      | RtyArrow (_) -> assumptions)
+    [] ctx.rty
 
 let check_subtype (env: Env.t) (ctx: full_ctx) (ty': string * string * rty) (ty: string * string * rty) =
   match ty', ty with
@@ -63,8 +64,8 @@ let check_subtype (env: Env.t) (ctx: full_ctx) (ty': string * string * rty) (ty:
       let v = Smtcheck.create_var ctx.z3 ctx.ctr pref2 name2 bty2 in
       let phi2 = Expr.substitute_one phi2 v x in
       let c = Boolean.mk_implies ctx.z3 phi1 phi2 in
-      let c = entailment ctx c in
-      Smtcheck.check ctx.z3 c
+      let assumptions = entailment ctx in
+      Smtcheck.check ctx.z3 assumptions c
   | _ -> failwith "NI CHECK_SUBTYPE"
 
 let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : (string * rty) =
@@ -104,8 +105,8 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : (string * rty) =
       let arg_name = Smtcheck.create_var ctx.z3 ctx.ctr ctx.prefix (Ident.name param) arg_ty in
       let arg_rty = RtyBase {base_ty = arg_ty; phi = Boolean.mk_true ctx.z3} in
       let new_ctx = {ctx with rty = (ctx.prefix ^ (Ident.name param), ctx.prefix, arg_rty)::ctx.rty} in
-      let (ty_pref, ret_rty) = type_infer new_ctx c_rhs in
-      (ty_pref, RtyArrow {arg_name; arg_rty; ret_rty})
+      let (_, ret_rty) = type_infer new_ctx c_rhs in
+      (ctx.prefix, RtyArrow {arg_name; arg_rty; ret_rty})
     | _ -> failwith "OCaml type of function is not arrow")
   | Texp_function(_) -> failwith "function keyword not supported"
   | Texp_apply(op, args) ->
@@ -265,6 +266,28 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
   | Texp_extension_constructor(_)
   | Texp_open(_) -> failwith "NI TYPE_CHECK 2"
 
+let rec add_app
+  (ctx: full_ctx)
+  (ty_pref: string)
+  (op_name: string)
+  (arg_names: Expr.expr list)
+  (arg_sorts: Sort.sort list)
+  (ty: rty): rty =
+    match ty with
+    | RtyBase {base_ty; phi} ->
+      if (Z3.Boolean.is_true phi) && ((List.length arg_names) <> 0) then
+        let ret_sort = Smtcheck.convert_type ctx.z3 ctx.ctr ty_pref base_ty in
+        let phi_lhs = Expr.mk_const_s ctx.z3 "v" ret_sort in
+        let phi_rhs = Smtcheck.make_app ctx.z3 op_name arg_names arg_sorts ret_sort in
+        let phi_fin = Boolean.mk_eq ctx.z3 phi_lhs phi_rhs in
+        RtyBase {base_ty; phi = phi_fin}
+      else
+        ty
+    | RtyArrow {arg_name; arg_rty; ret_rty} ->
+      let arg_ty = rty_to_type_expr arg_rty in
+      let arg_sort = Smtcheck.convert_type ctx.z3 ctx.ctr ty_pref arg_ty in
+      let ret_rty = add_app ctx ty_pref op_name (arg_names @ [arg_name]) (arg_sorts @ [arg_sort]) ret_rty in
+      RtyArrow {arg_name; arg_rty; ret_rty}
 
 (* type check or type infer the item given and give the updated ctx *)
 let type_item (ctx: full_ctx) (item: Typedtree.structure_item) : full_ctx =
@@ -276,6 +299,8 @@ let type_item (ctx: full_ctx) (item: Typedtree.structure_item) : full_ctx =
     | None ->
       let (ty_pref, rty) = type_infer ctx vb.vb_expr in
       let name = get_pat_str vb.vb_pat in
+      (* add application if ret_ty is true *)
+      let rty = add_app ctx ty_pref (ctx.prefix ^ name) [] [] rty in 
       { ctx with rty = (ctx.prefix ^ name, ty_pref, rty)::ctx.rty }
       (*{z3 = ctx.z3; rty = (prefix ^ name, rty)::ctx.rty}*)
     | Some (_, _, ty) -> type_check ctx vb.vb_expr ty; ctx)

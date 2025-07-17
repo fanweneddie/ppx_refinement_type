@@ -26,14 +26,15 @@ let convert_type
     | "int" -> Arithmetic.Integer.mk_sort ctx
     | "bool" -> Boolean.mk_sort ctx
     | _ -> constr_lookup cctx (prefix ^ name))
-  | _ -> failwith "Type not constructor" 
+  | Tarrow(_) -> failwith "convert_type: Tarrow not supported"
+  | _ -> failwith "convert_type: Type not constructor" 
 
 let convert_constant 
   (ctx: Z3.context) 
   (c: Asttypes.constant): Expr.expr =
   match c with
   | Const_int n -> Arithmetic.Integer.mk_numeral_i ctx n
-  | _ -> failwith "Unsupported constant type"
+  | _ -> failwith "convert_constant: Unsupported constant type"
 
 (*let convert_val_name (vctx: val_ctx) (ident: string) =
   let res = 
@@ -51,6 +52,15 @@ let create_var
   (bty: Types.type_expr): Expr.expr =
   let sort = convert_type ctx cctx prefix bty in
   Expr.mk_const_s ctx name sort
+
+let make_app
+  (ctx: Z3.context)
+  (op_name: string)
+  (args: Expr.expr list)
+  (arg_sorts: Sort.sort list)
+  (ret_sort: Sort.sort): Expr.expr =
+    let f = FuncDecl.mk_func_decl_s ctx op_name arg_sorts ret_sort in
+    FuncDecl.apply f args
 
 let rec transl_expr 
   (ctx: Z3.context) 
@@ -130,14 +140,23 @@ let rec transl_expr
 (*let convert_phi (ctx: context) (phi: expression): Z3.Expr.expr =
   transl_expr ctx [] phi*)
 
-let check (ctx: Z3.context) (c: Expr.expr) : unit =
+let check (ctx: Z3.context) (assumptions: Expr.expr list) (c: Expr.expr): unit =
   let solver = Z3.Solver.mk_solver ctx None in 
   let subtype_expr = Boolean.mk_not ctx c in
+  let _ = Solver.add solver assumptions in
   let _ = Solver.add solver [subtype_expr] in
-  (*print_endline "BEGIN";
-  print_endline (Z3.Expr.to_string c);
-  print_endline "END";*)
+  print_endline "BEGIN";
+  (*let _ = List.map (fun expr -> print_endline (Z3.Expr.to_string expr)) assumptions in
+  print_endline (Z3.Expr.to_string c);*)
+  print_endline (Z3.Solver.to_string solver);
+  print_endline "END";
   match Solver.check (solver) [] with
-  | SATISFIABLE -> failwith "Type error"
+  | SATISFIABLE -> 
+    (let model = Solver.get_model solver in
+    match model with
+    | None -> failwith "No model";
+    | Some(model) ->
+      print_endline (Model.to_string model);
+      failwith "Type error")
   | UNSATISFIABLE -> ()
   | UNKNOWN -> failwith "Z3 unknown"

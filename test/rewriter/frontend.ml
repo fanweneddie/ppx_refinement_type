@@ -1,4 +1,4 @@
-let[@rty] p = (v >= 1: int);;
+(*let[@rty] p = (v >= 1: int);;
 
 let[@rty] foo = (v > 0: int);;
 
@@ -68,7 +68,7 @@ fact 5;;
 
 let [@rty] res = (v >= 1: int);;
 let res = fact 5;;
-res;;
+res;;*)
 
 
 module IList = struct
@@ -114,7 +114,7 @@ module IList = struct
   let[@axiom] list_cons (l: t) (x: int) = hd (cons x l) x;;
 end
 
-let[@rty] test_axiom = ((*v = *)true: bool);;
+let[@rty] test_axiom = (v = true: bool);;
 
 let test_axiom = IList.hd (IList.cons 4 IList.empty) 4;;
 

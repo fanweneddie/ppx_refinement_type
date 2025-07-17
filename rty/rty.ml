@@ -29,6 +29,17 @@ let print_rty_ctx ctx =
       (print_endline (prefix ^ name); print_endline (layout_rty ty))) 
     () ctx
 
+let rec rty_to_type_expr (rty: rty): Types.type_expr =
+  match rty with
+  | RtyBase { base_ty; _ } -> base_ty
+  | RtyArrow { arg_rty; ret_rty; _ } ->
+    let arg_ty = rty_to_type_expr arg_rty in
+    let ret_ty = rty_to_type_expr ret_rty in
+    Types.create_expr 
+      (Tarrow (Nolabel, arg_ty, ret_ty, Types.commu_ok))
+      ~level:0 ~scope:0 ~id:0
+
+
 module Builtin = struct
   let plus (ctx: Z3.context): rty = 
     let x = Arithmetic.Integer.mk_const_s ctx "var_x" in
