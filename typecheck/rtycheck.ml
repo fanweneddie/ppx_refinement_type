@@ -134,7 +134,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : (string * rty) =
           ([], [], ty) arg_exprs
       in
       let arg_z3_exprs = 
-        List.map (fun arg -> Smtcheck.transl_expr ctx.z3 ctx.ctr (*ctx.stv*) ctx.prefix arg) arg_exprs
+        List.map (fun arg -> Smtcheck.transl_expr ctx.z3 ctx.ctr [] (*ctx.stv*) ctx.prefix arg) arg_exprs
       in
       let final_ty = 
         List.fold_left2
@@ -156,7 +156,7 @@ let rec type_infer (ctx: full_ctx) (e: Typedtree.expression) : (string * rty) =
           base_ty = e.exp_type;
           phi = Boolean.mk_eq ctx.z3 
             (Expr.mk_const_s ctx.z3 "v" sort)
-            (Smtcheck.transl_expr ctx.z3 ctx.ctr (*ctx.stv*) ctx.prefix e)
+            (Smtcheck.transl_expr ctx.z3 ctx.ctr [] (*ctx.stv*) ctx.prefix e)
         })
     | _ -> (ctx.prefix, RtyBase { base_ty = e.exp_type; phi = Boolean.mk_true ctx.z3 }))
   | Texp_variant(_)
@@ -231,7 +231,7 @@ and type_check (ctx: full_ctx) (e: Typedtree.expression) (ty: rty): unit =
     let (ty_pref', ty') = type_infer ctx e in
     check_subtype e.exp_env ctx ("v", ty_pref', ty') ("v", ctx.prefix, ty)
   | Texp_ifthenelse(b, e1, e2o) ->
-    let b_z3 = Smtcheck.transl_expr ctx.z3 ctx.ctr (*ctx.stv*) ctx.prefix b in
+    let b_z3 = Smtcheck.transl_expr ctx.z3 ctx.ctr [] (*ctx.stv*) ctx.prefix b in
     let ty1 = RtyBase {base_ty = Predef.type_int; phi = b_z3} in
     let new_ctx1 = {ctx with rty = ("", ctx.prefix, ty1)::ctx.rty} in
     type_check new_ctx1 e1 ty;

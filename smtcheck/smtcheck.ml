@@ -14,6 +14,11 @@ let constr_lookup (cctx: constr_ctx) (ident: string): Sort.sort =
   | Some((_, sort)) -> sort
   | None -> failwith ("Constructor type " ^ (ident) ^ " not found")
 
+let rec lookup_bound (l: string list) (ident: string) (ind: int): int option =
+  match l with
+  | [] -> None
+  | hd::tl -> if hd = ident then Some ind else lookup_bound tl ident (ind+1)
+
 let convert_type 
   (ctx: Z3.context) 
   (cctx: constr_ctx)
@@ -65,18 +70,21 @@ let make_app
 let rec transl_expr 
   (ctx: Z3.context) 
   (cctx: constr_ctx)
+  (bound_vars: string list)
   (*(vctx: val_ctx)*)
   (prefix: string)
   (e: expression): Z3.Expr.expr =
   match e.exp_desc with
   | Texp_ident (path, _, _) ->
-    let name =
+    (let name =
       (match path with
       | Pident(_) -> "var_" ^ prefix ^ Path.name path
       | _ -> "var_" ^ Path.name path)
     in
     let sort = convert_type ctx cctx prefix e.exp_type in
-    Expr.mk_const_s ctx name sort
+    match (lookup_bound bound_vars name 0) with
+    | None -> Expr.mk_const_s ctx name sort
+    | Some n -> Quantifier.mk_bound ctx n sort)
     (*Arithmetic.Integer.mk_const_s ctx name*)
   | Texp_constant c -> convert_constant ctx c
   | Texp_apply (op_expr, args) ->
@@ -99,7 +107,7 @@ let rec transl_expr
         (fun (_, arg) ->
           match arg with
           | None -> None
-          | Some arg -> Some (transl_expr ctx cctx (*vctx*) prefix arg))
+          | Some arg -> Some (transl_expr ctx cctx bound_vars (*vctx*) prefix arg))
         args 
     in
     match op, args_z3 with 
@@ -145,11 +153,11 @@ let check (ctx: Z3.context) (assumptions: Expr.expr list) (c: Expr.expr): unit =
   let subtype_expr = Boolean.mk_not ctx c in
   let _ = Solver.add solver assumptions in
   let _ = Solver.add solver [subtype_expr] in
-  print_endline "BEGIN";
+  (*print_endline "BEGIN";
   (*let _ = List.map (fun expr -> print_endline (Z3.Expr.to_string expr)) assumptions in
   print_endline (Z3.Expr.to_string c);*)
   print_endline (Z3.Solver.to_string solver);
-  print_endline "END";
+  print_endline "END";*)
   match Solver.check (solver) [] with
   | SATISFIABLE -> 
     (let model = Solver.get_model solver in

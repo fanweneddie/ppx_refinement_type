@@ -143,7 +143,8 @@ let rec parse_rty info expr =
     let phi = 
       Smtcheck.transl_expr 
         info.z3_ctx 
-        info.cctx 
+        info.cctx
+        []
         (*info.vctx*)
         info.prefix
         (Ocaml_typecheck.process_expr env phi)
@@ -168,51 +169,62 @@ let rec parse_rty info expr =
     RtyBase { base_ty ; phi }
   | _ -> failwith "nope rty"
 
-let rec parse_axiom info expr = 
+let rec parse_axiom info arg_sorts arg_syms expr = 
   match expr.pexp_desc with
   | Pexp_constraint(phi, base_ty) ->
     let base_ty = Ocaml_typecheck.process_type info.env base_ty in
     let phi_typed = Ocaml_typecheck.process_expr info.env phi in
     if Ocaml_helper.unify_base_type info.env base_ty Predef.type_bool 
       && Ocaml_helper.unify_base_type info.env phi_typed.exp_type Predef.type_bool then
+      let bound_vars = List.map Z3.Symbol.to_string arg_syms in
       let constr = 
         Smtcheck.transl_expr 
           info.z3_ctx
           info.cctx
+          bound_vars
           (*info.vctx*)
           info.prefix
           phi_typed
       in
-      Z3.Boolean.mk_eq info.z3_ctx (constr) (Z3.Boolean.mk_true info.z3_ctx)
+      let fin_expr = Z3.Boolean.mk_eq info.z3_ctx (constr) (Z3.Boolean.mk_true info.z3_ctx) in
+      Z3.Quantifier.expr_of_quantifier 
+        (Z3.Quantifier.mk_forall 
+          info.z3_ctx arg_sorts arg_syms fin_expr None [] [] None None)
     else
       failwith "axiom return type is not bool"
   | Pexp_fun (_, _, arg, body) ->
-    let (name, tyc, exists) = parse_pat_constr arg in
+    let (name, tyc, _) = parse_pat_constr arg in
     let ty = Ocaml_typecheck.process_type info.env tyc in
     let val_desc = Ocaml_typecheck.create_val_desc ty in
     let (_, new_env) = Env.enter_value name val_desc info.env in
     let sym_name = "var_" ^ info.prefix ^ name in
     let sym = Z3.Symbol.mk_string info.z3_ctx sym_name in
     let sort = Smtcheck.convert_type info.z3_ctx info.cctx info.prefix ty in
-    let phi = parse_axiom {info with env = new_env} body in
-    let ret = 
+    parse_axiom {info with env = new_env} (arg_sorts @ [sort]) (arg_syms @ [sym]) body 
+    (*let ret = 
       if exists then
         Z3.Quantifier.mk_exists info.z3_ctx [sort] [sym] phi None [] [] None None
       else
         Z3.Quantifier.mk_forall info.z3_ctx [sort] [sym] phi None [] [] None None 
     in
-    Z3.Quantifier.expr_of_quantifier ret
+    Z3.Quantifier.expr_of_quantifier ret*)
   | _ -> 
     let phi_typed = Ocaml_typecheck.process_expr info.env expr in
+    let bound_vars = List.map Z3.Symbol.to_string arg_syms in
     let constr = 
       Smtcheck.transl_expr 
         info.z3_ctx 
-        info.cctx 
+        info.cctx
+        bound_vars
         (*info.vctx*)
         info.prefix
         phi_typed
     in
-    Z3.Boolean.mk_eq info.z3_ctx (constr) (Z3.Boolean.mk_true info.z3_ctx)
+    let fin_expr = Z3.Boolean.mk_eq info.z3_ctx (constr) (Z3.Boolean.mk_true info.z3_ctx) in
+    Z3.Quantifier.expr_of_quantifier 
+      (Z3.Quantifier.mk_forall 
+        info.z3_ctx arg_sorts arg_syms fin_expr None [] [] None None)
+    
 
 let parse_rty_binding info value_binding =
   (info.prefix ^ (pat_var_name value_binding.pvb_pat), info.prefix,
@@ -221,7 +233,7 @@ let parse_rty_binding info value_binding =
 let parse_axiom_binding info value_binding =
   (*print_endline (Ocaml_helper.string_of_pattern value_binding.pvb_pat);
   print_endline (Ocaml_helper.string_of_expression value_binding.pvb_expr);*)
-  let phi = parse_axiom info value_binding.pvb_expr in
+  let phi = parse_axiom info [] [] value_binding.pvb_expr in
   print_endline (Z3.Expr.to_string phi);
   ("", info.prefix, RtyBase{ base_ty = Predef.type_int; phi})
 
