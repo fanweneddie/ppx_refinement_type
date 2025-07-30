@@ -17,7 +17,7 @@ let constr_lookup (cctx: constr_ctx) (ident: string): Sort.sort =
 let rec lookup_bound (l: string list) (ident: string) (ind: int): int option =
   match l with
   | [] -> None
-  | hd::tl -> if hd = ident then Some ind else lookup_bound tl ident (ind+1)
+  | hd::tl -> if hd = ident then Some ind else lookup_bound tl ident (ind-1)
 
 let convert_type 
   (ctx: Z3.context) 
@@ -82,7 +82,7 @@ let rec transl_expr
       | _ -> "var_" ^ Path.name path)
     in
     let sort = convert_type ctx cctx prefix e.exp_type in
-    match (lookup_bound bound_vars name 0) with
+    match (lookup_bound bound_vars name ((List.length bound_vars) - 1)) with
     | None -> Expr.mk_const_s ctx name sort
     | Some n -> Quantifier.mk_bound ctx n sort)
     (*Arithmetic.Integer.mk_const_s ctx name*)

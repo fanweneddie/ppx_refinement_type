@@ -1,4 +1,4 @@
-(*let[@rty] p = (v >= 1: int);;
+let[@rty] p = (v >= 1: int);;
 
 let[@rty] foo = (v > 0: int);;
 
@@ -68,16 +68,16 @@ fact 5;;
 
 let [@rty] res = (v >= 1: int);;
 let res = fact 5;;
-res;;*)
+res;;
 
 
 module IList = struct
   type t = int list;;
   
-  (*let emp (l: t): bool = 
+  let emp (l: t): bool = 
     match l with
     | [] -> true
-    | _ -> false;;*)
+    | _ -> false;;
 
   let[@rty] empty = (true: t);;
 
@@ -101,11 +101,11 @@ module IList = struct
 
   let cons (x: int) (l: t): t = x::l;;
 
-  let _func (l: t): bool = ((*emp l ||*) hd empty 4 || hd (cons 4 l) 3);;
+  let _func (l: t): bool = (emp l || hd empty 4 || hd (cons 4 l) 3);;
 
-  (*let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x));;
+  let[@axiom] list_emp_no_hd (l : t) (x : int) = (emp l)#==>(not (hd l x));;
 
-  let[@axiom] list_emp_no_tl (l : t) (l1 : t) =
+  (*let[@axiom] list_emp_no_tl (l : t) (l1 : t) =
     (emp l)#==>(not (tl l l1));;
   
   let[@axiom] list_no_emp_exists_tl (l : t) ((l1 [@exists]) : t) =
