@@ -9,7 +9,6 @@ type info = {
   z3_ctx: Z3.context; 
   env: Env.t; 
   cctx: Smtcheck.constr_ctx;
-  (*vctx: Smtcheck.val_ctx;*)
   prefix: string;
 }
 
@@ -145,7 +144,6 @@ let rec parse_rty info expr =
         info.z3_ctx 
         info.cctx
         []
-        (*info.vctx*)
         info.prefix
         (Ocaml_typecheck.process_expr env phi)
     in
@@ -182,7 +180,6 @@ let rec parse_axiom info arg_sorts arg_syms expr =
           info.z3_ctx
           info.cctx
           bound_vars
-          (*info.vctx*)
           info.prefix
           phi_typed
       in
@@ -201,13 +198,6 @@ let rec parse_axiom info arg_sorts arg_syms expr =
     let sym = Z3.Symbol.mk_string info.z3_ctx sym_name in
     let sort = Smtcheck.convert_type info.z3_ctx info.cctx info.prefix ty in
     parse_axiom {info with env = new_env} (arg_sorts @ [sort]) (arg_syms @ [sym]) body 
-    (*let ret = 
-      if exists then
-        Z3.Quantifier.mk_exists info.z3_ctx [sort] [sym] phi None [] [] None None
-      else
-        Z3.Quantifier.mk_forall info.z3_ctx [sort] [sym] phi None [] [] None None 
-    in
-    Z3.Quantifier.expr_of_quantifier ret*)
   | _ -> 
     let phi_typed = Ocaml_typecheck.process_expr info.env expr in
     let bound_vars = List.map Z3.Symbol.to_string arg_syms in
@@ -216,7 +206,6 @@ let rec parse_axiom info arg_sorts arg_syms expr =
         info.z3_ctx 
         info.cctx
         bound_vars
-        (*info.vctx*)
         info.prefix
         phi_typed
     in
@@ -231,10 +220,7 @@ let parse_rty_binding info value_binding =
     parse_rty info value_binding.pvb_expr)
 
 let parse_axiom_binding info value_binding =
-  (*print_endline (Ocaml_helper.string_of_pattern value_binding.pvb_pat);
-  print_endline (Ocaml_helper.string_of_expression value_binding.pvb_expr);*)
   let phi = parse_axiom info [] [] value_binding.pvb_expr in
-  print_endline (Z3.Expr.to_string phi);
   ("", info.prefix, RtyBase{ base_ty = Predef.type_int; phi})
 
 let get_impl_from_typed_items name prefix struc =
@@ -259,27 +245,28 @@ let rec type_struc
   (path: string list)
   (struc: Parsetree.structure) 
   (ty_struc: Typedtree.structure): (rty_ctx * Smtcheck.constr_ctx) =
+  (* We need the Parsetree.structure to extract
+   the refinement type declaration and axioms *)
   let rtys, ax_struc = List.partition item_is_rty struc in
   let axioms, struc = List.partition item_is_axiom ax_struc in
   
   let ty_items = ty_struc.str_items in
+  (* We are assuming here that struc and ty_items are the same length *)
   let pt_struc = List.map2 (fun x y -> (x,y)) struc ty_items in
   let mod_info = List.filter_map item_mod_info pt_struc in
 
   let prefix = List.fold_left (fun acc x -> acc ^ x ^ ".") "" path in
   let ty_decl_names = module_ty_decl struc in
-  (*let val_names = module_val struc in*)
-  let cctx: Smtcheck.constr_ctx = 
+  let cctx: Smtcheck.constr_ctx =
     List.map 
       (fun name -> 
         let sort = Z3.Sort.mk_uninterpreted_s z3_ctx (prefix ^ name) in
-        (prefix ^ name, sort)) 
+        (prefix ^ name, sort))
       ty_decl_names 
   in
-  (*let vctx: Smtcheck.val_ctx = List.map (fun name -> (name, prefix ^ name)) val_names in*)
 
   let env = ty_struc.str_final_env in
-  let info = {z3_ctx; env; cctx; (*vctx;*) prefix} in
+  let info = {z3_ctx; env; cctx; prefix} in
   let rtys_ctx: rty_ctx =
     List.filter_map
       (fun item ->
@@ -298,8 +285,7 @@ let rec type_struc
         | _ -> None)
       axioms
   in
-  (* There may be issue with names inside modules *)
-  (* Also order of the type declaration 
+  (* Order of the type declaration 
     and implementation is not checked*)
   let top_ctx = axioms_ctx @ rtys_ctx @ top_ctx in
   let top_cctx = cctx @ top_cctx in
@@ -311,7 +297,7 @@ let rec type_struc
       mod_info 
   in
   let anf_struc = Anormal.normalize ty_struc in
-  let ret_ctx = Rtycheck.bidirect_type z3_ctx module_rctx module_cctx (*vctx*) prefix anf_struc in
+  let ret_ctx = Rtycheck.bidirect_type z3_ctx module_rctx module_cctx prefix anf_struc in
   
   let () =
     List.iter
@@ -332,6 +318,7 @@ let rec type_struc
 
 let impl struc =
   let ret_struc = remove_attr struc in
+  (* Use ocaml to typecheck the program without any refinement types or axioms *)
   let implementation = Ocaml_typecheck.process_implementation_file ret_struc in
   let ty_struc = implementation.structure in
   

@@ -27,7 +27,7 @@ let rec normalize_name (e: Typedtree.expression) (k: cont): Typedtree.expression
       if (isValue e')
         then (k e')
       else let t = genSym() in
-      let pat: Typedtree.pattern =  
+      let pat: Typedtree.pattern =
       {
         pat_desc = Tpat_var(Ident.create_local(t), {txt = t; loc = Location.none});
         pat_loc = Location.none;
